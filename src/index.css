@@ -1,0 +1,61 @@
+/* Dark mode is the app's only theme (by request) rather than following the system
+   preference - these tokens are the single source of truth for every color in the app. */
+:root {
+  color-scheme: dark;
+  --color-bg: #0f0f12;
+  --color-surface: #1a1a1f;
+  --color-surface-alt: #202027;
+  --color-border: #2c2c34;
+  --color-text: #f0f0f3;
+  --color-text-muted: #9a9aa5;
+  --color-accent: #a78bfa;
+  --color-accent-hover: #c4b5fd;
+  --color-accent-contrast: #14121c;
+  --color-danger: #f87171;
+  --color-danger-bg: #2a1414;
+  --color-danger-border: #5c2323;
+  --color-warning-bg: #2a2210;
+  --color-warning-border: #5c4a1a;
+  --color-warning-text: #fbbf24;
+  --color-success: #4ade80;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
