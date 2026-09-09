@@ -47,26 +47,46 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
+interface RequestOptions {
+  signal?: AbortSignal;
+  /** Attached as `Authorization: Bearer <token>` when present - for endpoints behind [Authorize]. */
+  accessToken?: string;
+}
+
+// `credentials: "include"` on every call: the refreshToken cookie is httpOnly and
+// scoped to /api/auth, so sending it on every request is harmless, and auth endpoints
+// need it both to receive Set-Cookie (login/signup/google) and to send it back (refresh/logout).
+export async function apiGet<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    signal: options.signal,
+    credentials: "include",
+    headers: authHeader(options.accessToken),
+  });
   return handleResponse<T>(response);
 }
 
-export async function apiPostJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export async function apiPostJson<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...authHeader(options.accessToken) },
     body: JSON.stringify(body),
-    signal,
+    signal: options.signal,
   });
   return handleResponse<T>(response);
 }
 
-export async function apiPostForm<T>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {
+export async function apiPostForm<T>(path: string, form: FormData, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
+    credentials: "include",
+    headers: authHeader(options.accessToken),
     body: form,
-    signal,
+    signal: options.signal,
   });
   return handleResponse<T>(response);
+}
+
+function authHeader(accessToken?: string): Record<string, string> {
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }

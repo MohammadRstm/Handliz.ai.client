@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import { generateImages, getImageModels, refineImage } from "../api/imageGenerationApi";
 import type { ChatMessageDto, GenerateImagesParams, GenerateImagesResponse, ImageModelsResponse } from "../api/types";
+import { useAuth } from "../auth/useAuth";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { GenerationForm } from "../components/GenerationForm";
 import { ImageChatPanel } from "../components/ImageChatPanel";
@@ -20,6 +21,7 @@ function toError(err: unknown): ApiError | Error {
 }
 
 export function GenerationPage() {
+  const { user, logout } = useAuth();
   const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
   const [catalogError, setCatalogError] = useState<Error | null>(null);
 
@@ -109,6 +111,12 @@ export function GenerationPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
+        <div className={styles.accountBar}>
+          <span className={styles.accountName}>{user?.displayName}</span>
+          <button type="button" className={styles.logoutButton} onClick={() => void logout()}>
+            Log out
+          </button>
+        </div>
         <h1 className={styles.brand}>Handliz.ai</h1>
         <p className={styles.tagline}>Turn a reference photo into on-site renders for any place, time, and weather.</p>
       </header>

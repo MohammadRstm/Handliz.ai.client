@@ -10,7 +10,7 @@ import type {
 const BASE_PATH = "/api/image-generation";
 
 export function getImageModels(signal?: AbortSignal): Promise<ImageModelsResponse> {
-  return apiGet<ImageModelsResponse>(`${BASE_PATH}/models`, signal);
+  return apiGet<ImageModelsResponse>(`${BASE_PATH}/models`, { signal });
 }
 
 function buildGenerateForm(params: GenerateImagesParams): FormData {
@@ -36,12 +36,12 @@ export function generateImages(
   params: GenerateImagesParams,
   signal?: AbortSignal,
 ): Promise<GenerateImagesResponse> {
-  return apiPostForm<GenerateImagesResponse>(BASE_PATH, buildGenerateForm(params), signal);
+  return apiPostForm<GenerateImagesResponse>(BASE_PATH, buildGenerateForm(params), { signal });
 }
 
 export function refineImage(
   params: RefineImageParams,
   signal?: AbortSignal,
 ): Promise<RefineImageResponse> {
-  return apiPostJson<RefineImageResponse>(`${BASE_PATH}/refine`, params, signal);
+  return apiPostJson<RefineImageResponse>(`${BASE_PATH}/refine`, params, { signal });
 }
