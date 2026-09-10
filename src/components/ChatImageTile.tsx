@@ -4,7 +4,8 @@ import styles from "./ChatImageTile.module.css";
 
 interface ChatImageTileProps {
   status: "loading" | "failed" | "loaded";
-  dataUrl?: string;
+  /** Already absolute - callers resolve it through imageUrl(). */
+  src?: string;
   label: string;
   /** Manual selection for editing (Chunk 8) - independent of the lightbox viewer, which opens on the image itself. */
   isChecked?: boolean;
@@ -19,7 +20,7 @@ interface ChatImageTileProps {
 
 export function ChatImageTile({
   status,
-  dataUrl,
+  src,
   label,
   isChecked,
   onToggleCheck,
@@ -30,9 +31,9 @@ export function ChatImageTile({
 }: ChatImageTileProps) {
   return (
     <div className={`${styles.tile} ${isChecked ? styles.tileSelected : ""}`}>
-      {status === "loaded" && dataUrl && (
+      {status === "loaded" && src && (
         <button type="button" className={styles.tileButton} onClick={onClick}>
-          <img src={dataUrl} alt={label} className={styles.image} />
+          <img src={src} alt={label} className={styles.image} loading="lazy" decoding="async" />
         </button>
       )}
 

@@ -3,7 +3,10 @@ import styles from "./Lightbox.module.css";
 
 export interface LightboxItem {
   id: string;
-  dataUrl: string;
+  /** Already absolute - resolved by the caller. */
+  src: string;
+  /** Small variant for the filmstrip, so opening the viewer doesn't fetch every image at full size. */
+  thumbnailSrc: string;
   label: string;
 }
 
@@ -54,7 +57,7 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
         )}
 
         <div className={styles.contentColumn}>
-          <img src={item.dataUrl} alt={item.label} className={styles.image} />
+          <img src={item.src} alt={item.label} className={styles.image} decoding="async" />
           <p className={styles.caption}>
             {item.label} ({activeIndex + 1}/{items.length})
           </p>
@@ -70,7 +73,7 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
                   className={`${styles.thumbnail} ${index === activeIndex ? styles.thumbnailActive : ""}`}
                   onClick={() => onNavigate(index)}
                 >
-                  <img src={thumbItem.dataUrl} alt={thumbItem.label} className={styles.thumbnailImg} />
+                  <img src={thumbItem.thumbnailSrc} alt={thumbItem.label} className={styles.thumbnailImg} loading="lazy" decoding="async" />
                 </button>
               ))}
             </div>

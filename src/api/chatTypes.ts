@@ -47,7 +47,12 @@ export interface ChatSummaryDto {
   title: string | null;
   lastUsedAtUtc: string;
   requestedImageCount: number;
-  thumbnailDataUrl: string | null;
+  /**
+   * API-relative, signed URL for a small preview, or null when the chat has no image yet.
+   * Prepend API_BASE_URL to use it. Image bytes are no longer inlined in JSON: this
+   * response was 8 MB for four chats when they were.
+   */
+  thumbnailUrl: string | null;
 }
 
 export interface ChatListResponse {
@@ -58,14 +63,20 @@ export interface ChatListResponse {
 export interface UploadedReferenceImageDto {
   index: number;
   mimeType: string;
-  dataUrl: string;
+  /** API-relative, signed URL for the full-size image - prepend API_BASE_URL. */
+  url: string;
+  /** Small variant, for grid tiles. Use `url` only where the image is actually shown large. */
+  thumbnailUrl: string;
 }
 
 export interface GeneratedImageDto {
   imageId: string;
   index: number;
   mimeType: string;
-  dataUrl: string;
+  /** API-relative, signed URL for the full-size image - prepend API_BASE_URL. */
+  url: string;
+  /** Small variant, for grid tiles. Use `url` only where the image is actually shown large. */
+  thumbnailUrl: string;
 }
 
 /** A fast, GPT-free DB write - no prompt, title, or images yet. Fetch those separately right after navigating in. */
@@ -110,7 +121,8 @@ export interface RefineImageResponse {
   success: true;
   imageId: string;
   mimeType: string;
-  dataUrl: string;
+  /** API-relative, signed URL - prepend API_BASE_URL. */
+  url: string;
   model: ImageModelSummaryDto;
   refineMs: number;
 }

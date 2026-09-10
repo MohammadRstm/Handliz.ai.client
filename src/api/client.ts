@@ -7,6 +7,19 @@ import type { ApiErrorDetail } from "./apiTypes";
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5047";
 
+/**
+ * Resolves an API-relative image URL (as returned in `url` / `thumbnailUrl` fields) against
+ * the API origin, for use directly as an `<img src>`.
+ *
+ * These URLs are signed rather than bearer-authenticated, precisely so the browser can load
+ * them natively - it cannot attach an Authorization header to an image request. That in turn
+ * is what lets images be cached, lazily loaded, and fetched in parallel, none of which was
+ * possible while they were base64 blobs inlined in JSON responses.
+ */
+export function imageUrl(apiRelativeUrl: string): string {
+  return `${API_BASE_URL}${apiRelativeUrl}`;
+}
+
 /** Thrown for every non-2xx response. Carries the same ApiErrorDetail the backend returns. */
 export class ApiError extends Error {
   readonly code: string;

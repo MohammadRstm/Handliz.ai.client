@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as chatsApi from "../api/chatsApi";
-import { ApiError } from "../api/client";
+import { ApiError, imageUrl } from "../api/client";
 import type {
   ChatDetailResponse,
   GeneratedImageDto,
@@ -208,13 +208,21 @@ export function ChatPage() {
     const generatedItems: LightboxItem[] = images
       .slice()
       .sort((a, b) => a.index - b.index)
-      .map((img) => ({ id: img.imageId, dataUrl: img.dataUrl, label: `Generated image ${img.index + 1}` }));
+      .map((img) => ({
+        id: img.imageId,
+        src: imageUrl(img.url),
+        thumbnailSrc: imageUrl(img.thumbnailUrl),
+        label: `Generated image ${img.index + 1}`,
+      }));
     const referenceItems: LightboxItem[] = uploadedImages.map((ref) => ({
       id: `reference-${ref.index}`,
-      dataUrl: ref.dataUrl,
+      src: imageUrl(ref.url),
+      thumbnailSrc: imageUrl(ref.thumbnailUrl),
       label: `Reference photo ${ref.index + 1}`,
     }));
-    return [...generatedItems, ...referenceItems];
+    // Same order as the grid renders them (references first), so stepping through the
+    // viewer with the arrows follows the order the user is looking at.
+    return [...referenceItems, ...generatedItems];
   }, [images, uploadedImages]);
 
   const handleSelectModel = (key: string) => {
@@ -444,7 +452,7 @@ export function ChatPage() {
             <ChatImageTile
               key={`reference-${ref.index}`}
               status="loaded"
-              dataUrl={ref.dataUrl}
+              src={imageUrl(ref.thumbnailUrl)}
               label={`Reference photo ${ref.index + 1}`}
               isChecked={selectedReferenceIndices.has(ref.index)}
               onToggleCheck={() => toggleReferenceSelection(ref.index)}
@@ -460,7 +468,7 @@ export function ChatPage() {
                 <ChatImageTile
                   key={`generated-${index}`}
                   status="loaded"
-                  dataUrl={image.dataUrl}
+                  src={imageUrl(image.thumbnailUrl)}
                   label={`Generated image ${index + 1}`}
                   isChecked={selectedGeneratedIds.has(image.imageId)}
                   onToggleCheck={() => toggleGeneratedSelection(image.imageId)}

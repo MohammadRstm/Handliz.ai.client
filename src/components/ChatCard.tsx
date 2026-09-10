@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChatSummaryDto } from "../api/chatTypes";
+import { imageUrl } from "../api/client";
 import styles from "./ChatCard.module.css";
 
 interface ChatCardProps {
@@ -26,8 +27,14 @@ export function ChatCard({ chat, onClick }: ChatCardProps) {
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      {chat.thumbnailDataUrl ? (
-        <img src={chat.thumbnailDataUrl} alt={chat.title ?? chat.location} className={styles.thumbnail} />
+      {chat.thumbnailUrl ? (
+        <img
+          src={imageUrl(chat.thumbnailUrl)}
+          alt={chat.title ?? chat.location}
+          className={styles.thumbnail}
+          loading="lazy"
+          decoding="async"
+        />
       ) : (
         <div className={styles.placeholder}>No image yet</div>
       )}
