@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ImageModelsResponse, StartChatParams, TimeOfDay, WeatherCondition } from "../api/chatTypes";
-import { TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
+import { DEFAULT_LOCATION, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import { AspectRatioPicker } from "./AspectRatioPicker";
 import { Dropdown } from "./Dropdown";
 import { ChevronUpDownIcon, HamburgerIcon, SendArrowIcon } from "./icons";
@@ -51,7 +51,10 @@ export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerPr
   );
 
   const trimmedLocation = location.trim();
-  const isValid = files.length > 0 && trimmedLocation.length > 0;
+  // Only the photo is actually required to submit - every other parameter (including
+  // Location) already has a usable value the moment the composer mounts, either a real
+  // default or, for Location, a fallback applied at submit time below.
+  const isValid = files.length > 0;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -60,7 +63,7 @@ export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerPr
       images: files,
       timeOfDay,
       weather,
-      location: trimmedLocation,
+      location: trimmedLocation || DEFAULT_LOCATION,
       imageCount,
       aspectRatio,
       modelKey,
@@ -83,7 +86,7 @@ export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerPr
           className={styles.locationInput}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
-          placeholder="Where is this? e.g. Brazzaville, Republic of the Congo"
+          placeholder="Where is this? (optional - e.g. Brazzaville, Republic of the Congo)"
           maxLength={200}
           disabled={isSubmitting}
         />

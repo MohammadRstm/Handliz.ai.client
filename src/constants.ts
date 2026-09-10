@@ -25,3 +25,12 @@ export const WEATHER_OPTIONS: { value: WeatherCondition; label: string }[] = [
 ];
 
 export const MAX_INSTRUCTION_LENGTH = 1000;
+
+// Every other generation parameter has a sensible default the moment the composer
+// mounts (time of day, weather, count, aspect ratio, model) - Location is the one field
+// with no default, which is what was blocking Submit until the user typed something.
+// The backend genuinely requires a non-empty Location (it drives GPT's derivation of
+// real-world setting/vegetation/climate), so rather than making the field optional
+// end-to-end, an unfilled Location falls back to this instruction, which GPT can act on
+// directly using the reference photo(s) it already receives.
+export const DEFAULT_LOCATION = "Infer the location from the uploaded reference photo(s).";
