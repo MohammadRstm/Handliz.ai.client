@@ -3,7 +3,8 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
-import { GenerationPage } from "./pages/GenerationPage";
+import { HomePage } from "./pages/HomePage";
+import { ChatPage } from "./pages/ChatPage";
 
 function App() {
   return (
@@ -16,7 +17,15 @@ function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <GenerationPage />
+                <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chats/:chatId"
+            element={
+              <ProtectedRoute>
+                <ChatPage />
               </ProtectedRoute>
             }
           />

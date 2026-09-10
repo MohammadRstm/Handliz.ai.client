@@ -1,6 +1,3 @@
-// Mirrors the backend DTOs (Handliz.ai/Dtos/**). System.Text.Json's Web defaults
-// camelCase every property name, so these fields match exactly what the API returns.
-
 export type TimeOfDay =
   | "Dawn"
   | "Morning"
@@ -43,6 +40,25 @@ export interface ImageModelSummaryDto {
   displayName: string;
 }
 
+export interface ChatSummaryDto {
+  id: string;
+  location: string;
+  lastUsedAtUtc: string;
+  requestedImageCount: number;
+  thumbnailDataUrl: string | null;
+}
+
+export interface ChatListResponse {
+  success: true;
+  chats: ChatSummaryDto[];
+}
+
+export interface UploadedReferenceImageDto {
+  index: number;
+  mimeType: string;
+  dataUrl: string;
+}
+
 export interface GeneratedImageDto {
   imageId: string;
   index: number;
@@ -50,27 +66,30 @@ export interface GeneratedImageDto {
   dataUrl: string;
 }
 
-export interface GenerationTimingsDto {
-  promptMs: number;
-  imagesMs: number;
-}
-
-export interface GenerateImagesResponse {
+export interface StartChatResponse {
   success: true;
-  requestedCount: number;
-  images: GeneratedImageDto[];
-  failedCount: number;
-  warnings: string[];
-  generatedPrompt?: string | null;
+  chatId: string;
+  requestedImageCount: number;
   model: ImageModelSummaryDto;
   imageSize: string;
-  timings: GenerationTimingsDto;
+  generatedPrompt: string | null;
+  referenceImages: UploadedReferenceImageDto[];
+  warnings: string[];
 }
 
-export interface ChatMessageDto {
-  role: "user" | "assistant";
-  text: string;
-  createdAtUtc: string;
+export interface ChatDetailResponse {
+  success: true;
+  id: string;
+  location: string;
+  timeOfDay: string;
+  weather: string;
+  aspectRatio: string;
+  model: ImageModelSummaryDto;
+  imageSize: string;
+  requestedImageCount: number;
+  generatedPrompt: string | null;
+  referenceImages: UploadedReferenceImageDto[];
+  images: GeneratedImageDto[];
 }
 
 export interface RefineImageResponse {
@@ -79,24 +98,10 @@ export interface RefineImageResponse {
   mimeType: string;
   dataUrl: string;
   model: ImageModelSummaryDto;
-  history: ChatMessageDto[];
-  historyTruncated: boolean;
   refineMs: number;
 }
 
-export interface ApiErrorDetail {
-  code: string;
-  message: string;
-  stage?: string | null;
-  fieldErrors?: Record<string, string[]> | null;
-}
-
-export interface ApiErrorResponse {
-  success: false;
-  error: ApiErrorDetail;
-}
-
-export interface GenerateImagesParams {
+export interface StartChatParams {
   images: File[];
   timeOfDay: TimeOfDay;
   weather: WeatherCondition;
@@ -105,9 +110,4 @@ export interface GenerateImagesParams {
   aspectRatio: string;
   modelKey?: string;
   imageSize?: string;
-}
-
-export interface RefineImageParams {
-  imageId: string;
-  instruction: string;
 }

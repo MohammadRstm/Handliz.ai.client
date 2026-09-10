@@ -1,4 +1,4 @@
-import type { ApiErrorDetail } from "./types";
+import type { ApiErrorDetail } from "./apiTypes";
 
 /**
  * Base URL of the Handliz.ai API. Configured via VITE_API_BASE_URL (see .env.development /
