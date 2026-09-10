@@ -27,13 +27,13 @@ export function ChatCard({ chat, onClick }: ChatCardProps) {
       onMouseLeave={() => setIsHovering(false)}
     >
       {chat.thumbnailDataUrl ? (
-        <img src={chat.thumbnailDataUrl} alt={chat.location} className={styles.thumbnail} />
+        <img src={chat.thumbnailDataUrl} alt={chat.title ?? chat.location} className={styles.thumbnail} />
       ) : (
         <div className={styles.placeholder}>No image yet</div>
       )}
 
       <div className={styles.footer}>
-        <span className={styles.location}>{chat.location}</span>
+        <span className={styles.location}>{chat.title ?? chat.location}</span>
         <span className={styles.count}>{chat.requestedImageCount} img</span>
       </div>
 

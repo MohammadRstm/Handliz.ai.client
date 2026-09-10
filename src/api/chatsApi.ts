@@ -3,6 +3,8 @@ import type {
   ChatDetailResponse,
   ChatListResponse,
   GeneratedImageDto,
+  GeneratePromptResponse,
+  GenerateTitleResponse,
   ImageModelsResponse,
   RefineImageResponse,
   StartChatParams,
@@ -40,6 +42,16 @@ function buildStartChatForm(params: StartChatParams): FormData {
 
 export function startChat(params: StartChatParams, accessToken: string, signal?: AbortSignal): Promise<StartChatResponse> {
   return apiPostForm<StartChatResponse>(BASE_PATH, buildStartChatForm(params), { accessToken, signal });
+}
+
+/** Runs Stage 1 (GPT master prompt) for a chat that doesn't have one yet. Idempotent. */
+export function generateChatPrompt(chatId: string, accessToken: string, signal?: AbortSignal): Promise<GeneratePromptResponse> {
+  return apiPostJson<GeneratePromptResponse>(`${BASE_PATH}/${chatId}/prompt`, {}, { accessToken, signal });
+}
+
+/** Runs the separate, fast, text-only title generation for a chat that doesn't have one yet. Idempotent. */
+export function generateChatTitle(chatId: string, accessToken: string, signal?: AbortSignal): Promise<GenerateTitleResponse> {
+  return apiPostJson<GenerateTitleResponse>(`${BASE_PATH}/${chatId}/title`, {}, { accessToken, signal });
 }
 
 /** Generates ONE image for a chat slot. Call this once per index in parallel - each resolves independently. */

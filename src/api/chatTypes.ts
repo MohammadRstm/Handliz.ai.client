@@ -43,6 +43,8 @@ export interface ImageModelSummaryDto {
 export interface ChatSummaryDto {
   id: string;
   location: string;
+  /** Null until GPT produces one - fall back to location for display until then. */
+  title: string | null;
   lastUsedAtUtc: string;
   requestedImageCount: number;
   thumbnailDataUrl: string | null;
@@ -66,13 +68,13 @@ export interface GeneratedImageDto {
   dataUrl: string;
 }
 
+/** A fast, GPT-free DB write - no prompt, title, or images yet. Fetch those separately right after navigating in. */
 export interface StartChatResponse {
   success: true;
   chatId: string;
   requestedImageCount: number;
   model: ImageModelSummaryDto;
   imageSize: string;
-  generatedPrompt: string | null;
   referenceImages: UploadedReferenceImageDto[];
   warnings: string[];
 }
@@ -81,6 +83,8 @@ export interface ChatDetailResponse {
   success: true;
   id: string;
   location: string;
+  /** Null until GPT produces one via generateChatTitle - fall back to location for display until then. */
+  title: string | null;
   timeOfDay: string;
   weather: string;
   aspectRatio: string;
@@ -90,6 +94,16 @@ export interface ChatDetailResponse {
   generatedPrompt: string | null;
   referenceImages: UploadedReferenceImageDto[];
   images: GeneratedImageDto[];
+}
+
+export interface GeneratePromptResponse {
+  success: true;
+  generatedPrompt: string;
+}
+
+export interface GenerateTitleResponse {
+  success: true;
+  title: string;
 }
 
 export interface RefineImageResponse {

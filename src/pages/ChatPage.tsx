@@ -35,7 +35,9 @@ export function ChatPage() {
   const [isRefining, setIsRefining] = useState(false);
   const [refineError, setRefineError] = useState<Error | null>(null);
 
-  const kickedOffForChatId = useRef<string | null>(null);
+  const imagesKickedOffForChatId = useRef<string | null>(null);
+  const promptKickedOffForChatId = useRef<string | null>(null);
+  const titleKickedOffForChatId = useRef<string | null>(null);
 
   const generateIndex = useCallback(
     (targetChatId: string, index: number) => {
@@ -66,10 +68,28 @@ export function ChatPage() {
     [accessToken],
   );
 
-  // Load the chat, then kick off generation for any slot that doesn't have an image yet -
-  // this covers both a freshly-started chat (every slot missing) and reopening one where a
-  // prior attempt failed. Guarded so React StrictMode's double-invoke (or a re-render)
-  // never fires the same chat's generation twice.
+  const kickOffMissingImages = useCallback(
+    (targetChatId: string, requestedImageCount: number, presentIndices: Set<number>) => {
+      if (imagesKickedOffForChatId.current === targetChatId) return;
+      imagesKickedOffForChatId.current = targetChatId;
+      for (let i = 0; i < requestedImageCount; i++) {
+        if (!presentIndices.has(i)) {
+          generateIndex(targetChatId, i);
+        }
+      }
+    },
+    [generateIndex],
+  );
+
+  // Load the chat, then:
+  //  - if it has no title yet, fetch one (fast, text-only) - independent of everything
+  //    else, so it typically appears well before the images do.
+  //  - if it has no prompt yet, fetch one (Stage 1, slower - analyzes the reference
+  //    photos) and only THEN kick off image generation for missing slots, since Gemini
+  //    needs that prompt. If the prompt is already present (a chat opened before, or
+  //    reopened after a previous attempt), skip straight to image generation.
+  // Each step is guarded by its own ref so React StrictMode's double-invoke (or a
+  // re-render) never fires the same chat's title/prompt/images more than once.
   useEffect(() => {
     if (!chatId || !accessToken) return;
     let cancelled = false;
@@ -81,15 +101,39 @@ export function ChatPage() {
         setChat(response);
         setImages(response.images);
 
-        if (kickedOffForChatId.current !== chatId) {
-          kickedOffForChatId.current = chatId;
-          const presentIndices = new Set(response.images.map((img) => img.index));
-          for (let i = 0; i < response.requestedImageCount; i++) {
-            if (!presentIndices.has(i)) {
-              generateIndex(chatId, i);
-            }
-          }
+        if (!response.title && titleKickedOffForChatId.current !== chatId) {
+          titleKickedOffForChatId.current = chatId;
+          chatsApi
+            .generateChatTitle(chatId, accessToken)
+            .then((titleResponse) => {
+              if (cancelled) return;
+              setChat((prev) => (prev ? { ...prev, title: titleResponse.title } : prev));
+            })
+            .catch(() => {
+              // Non-critical: the location keeps serving as the displayed title.
+            });
         }
+
+        const presentIndices = new Set(response.images.map((img) => img.index));
+
+        if (response.generatedPrompt) {
+          kickOffMissingImages(chatId, response.requestedImageCount, presentIndices);
+          return;
+        }
+
+        if (promptKickedOffForChatId.current === chatId) return;
+        promptKickedOffForChatId.current = chatId;
+
+        chatsApi
+          .generateChatPrompt(chatId, accessToken)
+          .then((promptResponse) => {
+            if (cancelled) return;
+            setChat((prev) => (prev ? { ...prev, generatedPrompt: promptResponse.generatedPrompt } : prev));
+            kickOffMissingImages(chatId, response.requestedImageCount, presentIndices);
+          })
+          .catch((err) => {
+            if (!cancelled) setLoadError(toError(err));
+          });
       })
       .catch((err) => {
         if (!cancelled) setLoadError(toError(err));
@@ -177,7 +221,10 @@ export function ChatPage() {
         <Link to="/" className={styles.backLink}>
           ← Chats
         </Link>
-        <h1 className={styles.title}>{chat.location}</h1>
+        <h1 className={styles.title}>
+          {chat.title ?? chat.location}
+          {!chat.title && <span className={styles.titleLoading} aria-label="Generating title" />}
+        </h1>
         <div className={styles.summary}>
           {chat.model.displayName} · {chat.imageSize} · {chat.aspectRatio} · {chat.timeOfDay} · {chat.weather}
         </div>

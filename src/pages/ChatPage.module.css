@@ -39,6 +39,28 @@
 .title {
   margin: 8px 0 2px;
   font-size: 20px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* Small pulsing dot next to the location-as-placeholder title, shown only while the
+   real (GPT-generated) title is still in flight. */
+.titleLoading {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: titlePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes titlePulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .summary {
