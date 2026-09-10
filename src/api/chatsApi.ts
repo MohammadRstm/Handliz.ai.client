@@ -1,7 +1,8 @@
-import { apiGet, apiPostForm, apiPostJson } from "./client";
+import { apiDeleteJson, apiGet, apiPostForm, apiPostJson } from "./client";
 import type {
   ChatDetailResponse,
   ChatListResponse,
+  DeleteChatImagesResponse,
   EditImagesParams,
   EditImagesResponse,
   GeneratedImageDto,
@@ -100,4 +101,19 @@ export function editImages(
   signal?: AbortSignal,
 ): Promise<EditImagesResponse> {
   return apiPostJson<EditImagesResponse>(`${BASE_PATH}/${chatId}/edit`, params, { accessToken, signal });
+}
+
+/** Permanently removes the given images (generated and/or uploaded/source) from a chat. Unknown ids/indices are ignored. */
+export function deleteChatImages(
+  chatId: string,
+  generatedImageIds: string[],
+  referenceIndices: number[],
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<DeleteChatImagesResponse> {
+  return apiDeleteJson<DeleteChatImagesResponse>(
+    `${BASE_PATH}/${chatId}/images`,
+    { generatedImageIds, referenceIndices },
+    { accessToken, signal },
+  );
 }

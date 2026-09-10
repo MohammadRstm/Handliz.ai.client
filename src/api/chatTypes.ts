@@ -143,6 +143,11 @@ export interface EditImagesParams {
   imageSize: string;
 }
 
+export interface DeleteChatImagesResponse {
+  success: true;
+  requestedImageCount: number;
+}
+
 export interface EditImagesResponse {
   success: true;
   usedGpt: boolean;

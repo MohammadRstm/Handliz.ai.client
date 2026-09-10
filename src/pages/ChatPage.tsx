@@ -81,6 +81,9 @@ export function ChatPage() {
   const [uploadError, setUploadError] = useState<Error | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<Error | null>(null);
+
   const imagesKickedOffForChatId = useRef<string | null>(null);
   const promptKickedOffForChatId = useRef<string | null>(null);
   const titleKickedOffForChatId = useRef<string | null>(null);
@@ -220,12 +223,36 @@ export function ChatPage() {
     if (model) setEditImageSize(model.defaultImageSize);
   };
 
-  // Backspace (and, defensively, Delete) can trigger a browser's native "navigate back"
-  // behavior when focus isn't in a text field - which would silently unmount this page
-  // and read, to a user who just selected an image with the checkbox overlay, as the
-  // image having been deleted. There is no delete-image feature here, so both keys are
-  // fully neutralized outside of actual text inputs; as a useful side effect they also
-  // clear the current selection instead of doing nothing.
+  const handleDeleteSelected = useCallback(async () => {
+    if (!chatId || !accessToken || isDeleting || isEditing) return;
+    if (selectedGeneratedIds.size === 0 && selectedReferenceIndices.size === 0) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await chatsApi.deleteChatImages(chatId, Array.from(selectedGeneratedIds), Array.from(selectedReferenceIndices), accessToken);
+      // Re-fetch rather than patch local state: deleting a generated image re-numbers
+      // every remaining one server-side to close the gap (see DeleteChatImagesAsync), so
+      // a simple local filter would leave stale indices that no longer match the server.
+      const refreshed = await chatsApi.getChat(chatId, accessToken);
+      setChat(refreshed);
+      setImages(refreshed.images);
+      setUploadedImages(refreshed.referenceImages);
+      setSelectedGeneratedIds(new Set());
+      setSelectedReferenceIndices(new Set());
+    } catch (err) {
+      setDeleteError(toError(err));
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [chatId, accessToken, isDeleting, isEditing, selectedGeneratedIds, selectedReferenceIndices]);
+
+  // Backspace (and, defensively, Delete) previously risked triggering a browser's native
+  // "navigate back" behavior when focus isn't in a text field - unmounting this page and
+  // reading, to a user who'd just selected an image, as the image having vanished. Now
+  // that there's an actual delete action to take, both keys are still fully blocked from
+  // reaching any native handling outside real text inputs, but a non-empty selection
+  // triggers that deletion instead of only clearing the checkmarks.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Backspace" && event.key !== "Delete") return;
@@ -238,13 +265,14 @@ export function ChatPage() {
       if (isEditable) return;
 
       event.preventDefault();
-      setSelectedGeneratedIds(new Set());
-      setSelectedReferenceIndices(new Set());
+      if (selectedGeneratedIds.size > 0 || selectedReferenceIndices.size > 0) {
+        void handleDeleteSelected();
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [selectedGeneratedIds, selectedReferenceIndices, handleDeleteSelected]);
 
   const openLightbox = (itemId: string) => {
     const index = lightboxItems.findIndex((item) => item.id === itemId);
@@ -275,7 +303,7 @@ export function ChatPage() {
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = ""; // allow re-selecting the same file later
-    if (!file || !chatId || !accessToken) return;
+    if (!file || !chatId || !accessToken || isDeleting) return;
 
     setIsUploadingImage(true);
     setUploadError(null);
@@ -299,7 +327,7 @@ export function ChatPage() {
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!chatId || !accessToken || !canSubmit || isEditing) return;
+    if (!chatId || !accessToken || !canSubmit || isEditing || isDeleting) return;
 
     setIsEditing(true);
     setEditError(null);
@@ -450,7 +478,7 @@ export function ChatPage() {
           <form className={styles.refineBar} onSubmit={handleEdit}>
             <div className={styles.refineTarget}>
               {hasSelection
-                ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s)`
+                ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s) · Press Delete to remove`
                 : "Editing all recently generated images"}
             </div>
             <div className={styles.refineInputRow}>
@@ -459,7 +487,7 @@ export function ChatPage() {
                 type="button"
                 className={styles.attachButton}
                 onClick={handleAttachClick}
-                disabled={isUploadingImage || isEditing}
+                disabled={isUploadingImage || isEditing || isDeleting}
                 aria-label="Add another photo to this chat"
                 title="Add another photo to this chat"
               >
@@ -474,11 +502,11 @@ export function ChatPage() {
                   hasSelection ? "Edit only the selected images..." : "Describe an edit to apply to your recent images..."
                 }
                 maxLength={MAX_INSTRUCTION_LENGTH}
-                disabled={isEditing}
+                disabled={isEditing || isDeleting}
                 className={styles.refineInput}
               />
 
-              <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing}>
+              <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing || isDeleting}>
                 <label className={styles.settingField}>
                   <span>Time of day</span>
                   <select value={editTimeOfDay} onChange={(e) => setEditTimeOfDay(e.target.value as TimeOfDay)}>
@@ -532,7 +560,7 @@ export function ChatPage() {
                   </span>
                 }
                 align="right"
-                disabled={isEditing}
+                disabled={isEditing || isDeleting}
               >
                 <ModelPicker
                   models={catalog.models}
@@ -540,16 +568,17 @@ export function ChatPage() {
                   onSelectKey={handleSelectModel}
                   selectedImageSize={editImageSize}
                   onSelectImageSize={setEditImageSize}
-                  disabled={isEditing}
+                  disabled={isEditing || isDeleting}
                 />
               </Dropdown>
 
-              <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing}>
+              <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing || isDeleting}>
                 {isEditing ? <Spinner /> : "Send"}
               </button>
             </div>
             {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
             {editError && <ErrorBanner error={editError} onDismiss={() => setEditError(null)} />}
+            {deleteError && <ErrorBanner error={deleteError} onDismiss={() => setDeleteError(null)} />}
           </form>
         )}
       </main>
