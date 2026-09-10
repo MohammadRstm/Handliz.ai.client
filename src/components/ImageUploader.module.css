@@ -1,13 +1,25 @@
+/* One flex-wrap row holding both thumbnails and the dropzone (in that DOM order) -
+   not two stacked blocks. The dropzone (flex: 1, see below) claims whatever space is
+   left in the current row and shrinks as thumbnails accumulate; once a row has no room
+   left for it at its minimum width, it wraps to a new row by itself, which is then free
+   to shrink again as further thumbnails are added ahead of it. */
 .wrapper {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .dropzone {
+  flex: 1 1 220px;
+  min-width: 220px;
+  height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   border: 1.5px dashed var(--color-border);
   border-radius: var(--radius-md);
-  padding: 28px 16px;
+  padding: 8px 16px;
   text-align: center;
   cursor: pointer;
   background: var(--color-surface-alt);
@@ -41,18 +53,11 @@
   color: var(--color-text-muted);
 }
 
-.previewGrid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-  gap: 10px;
-}
-
 .previewItem {
   position: relative;
-  aspect-ratio: 1;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--color-border);

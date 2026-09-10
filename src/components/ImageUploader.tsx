@@ -10,9 +10,17 @@ interface ImageUploaderProps {
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-/** Multi-file drag-and-drop uploader with previews. Client-side format/count checks are a
- * convenience only - the backend re-validates everything (magic bytes, size, count) and is
- * the source of truth. */
+/**
+ * Multi-file drag-and-drop uploader. Thumbnails and the dropzone live in one flex-wrap
+ * row (thumbnails first, dropzone last in DOM order) rather than stacked in separate
+ * blocks: the dropzone grows to fill whatever space is left in the current row and
+ * shrinks as more thumbnails are added, wrapping to a fresh full-width row of its own
+ * once a row fills up - so adding more photos always continues the same sequence
+ * instead of pushing a full-width dropzone down as a separate section.
+ *
+ * Client-side format/count checks are a convenience only - the backend re-validates
+ * everything (magic bytes, size, count) and is the source of truth.
+ */
 export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,8 +59,28 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
 
   return (
     <div className={styles.wrapper}>
+      {previewUrls.map((url, index) => (
+        <div key={url} className={styles.previewItem}>
+          <img src={url} alt={`Reference ${index + 1}`} className={styles.previewImg} />
+          <button
+            type="button"
+            className={styles.removeButton}
+            onClick={() => removeAt(index)}
+            disabled={disabled}
+            aria-label={`Remove reference photo ${index + 1}`}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+
+      {/* Always the same size/content (flex: 1, shrinking as thumbnails accumulate) -
+          not a separate compact mode once files exist. That's what lets it wrap to a
+          fresh row and re-expand to fill it, repeating the same shrink cycle there. */}
       <div
-        className={`${styles.dropzone} ${isDragActive ? styles.dropzoneActive : ""} ${disabled ? styles.disabled : ""}`}
+        className={[styles.dropzone, isDragActive ? styles.dropzoneActive : "", disabled ? styles.disabled : ""]
+          .filter(Boolean)
+          .join(" ")}
         onDragOver={(e) => {
           e.preventDefault();
           if (!disabled) setIsDragActive(true);
@@ -73,31 +101,10 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
         <p className={styles.hint}>
-          {atLimit
-            ? `Maximum of ${maxFiles} reference photo${maxFiles === 1 ? "" : "s"} reached`
-            : "Drag photos here, or click to browse"}
+          {atLimit ? `Maximum of ${maxFiles} reference photo${maxFiles === 1 ? "" : "s"} reached` : "Drag photos here, or click to browse"}
         </p>
-        <p className={styles.hintSmall}>JPEG, PNG, or WebP · up to {maxFiles} photos</p>
+        {!atLimit && <p className={styles.hintSmall}>JPEG, PNG, or WebP · up to {maxFiles} photos</p>}
       </div>
-
-      {previewUrls.length > 0 && (
-        <ul className={styles.previewGrid}>
-          {previewUrls.map((url, index) => (
-            <li key={url} className={styles.previewItem}>
-              <img src={url} alt={`Reference ${index + 1}`} className={styles.previewImg} />
-              <button
-                type="button"
-                className={styles.removeButton}
-                onClick={() => removeAt(index)}
-                disabled={disabled}
-                aria-label={`Remove reference photo ${index + 1}`}
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
