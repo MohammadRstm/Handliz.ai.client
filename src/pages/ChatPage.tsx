@@ -57,6 +57,14 @@ export function ChatPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editError, setEditError] = useState<Error | null>(null);
 
+  // Loading feedback while an edit is in flight: the Gemini-only branch refines specific
+  // existing tiles in place (their ids tracked here so ChatImageTile can overlay a
+  // spinner on top of the still-visible image), while the GPT branch produces brand-new
+  // images with no ids yet - pendingNewImageCount reserves that many loading placeholder
+  // tiles until the real ones arrive. Exactly one of the two is ever non-empty per request.
+  const [refiningImageIds, setRefiningImageIds] = useState<Set<string>>(new Set());
+  const [pendingNewImageCount, setPendingNewImageCount] = useState(0);
+
   // In-chat editable generation parameters (Chunk 9) - seeded from the chat's current
   // values once it loads, then editable via the settings dropdown. Sent with every edit
   // request; the backend both applies them to that request and persists them as the
@@ -295,6 +303,12 @@ export function ChatPage() {
 
     setIsEditing(true);
     setEditError(null);
+    if (willUseGpt) {
+      setPendingNewImageCount(editImageCount);
+    } else {
+      const targetIds = selectedGeneratedIds.size > 0 ? selectedGeneratedIds : new Set(images.map((img) => img.imageId));
+      setRefiningImageIds(targetIds);
+    }
     try {
       const response = await chatsApi.editImages(
         chatId,
@@ -342,6 +356,8 @@ export function ChatPage() {
       setEditError(toError(err));
     } finally {
       setIsEditing(false);
+      setRefiningImageIds(new Set());
+      setPendingNewImageCount(0);
     }
   };
 
@@ -383,6 +399,19 @@ export function ChatPage() {
 
       <main className={styles.main}>
         <div className={styles.grid}>
+          {uploadedImages.map((ref) => (
+            <ChatImageTile
+              key={`reference-${ref.index}`}
+              status="loaded"
+              dataUrl={ref.dataUrl}
+              label={`Reference photo ${ref.index + 1}`}
+              isChecked={selectedReferenceIndices.has(ref.index)}
+              onToggleCheck={() => toggleReferenceSelection(ref.index)}
+              isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
+              onClick={() => openLightbox(`reference-${ref.index}`)}
+            />
+          ))}
+
           {Array.from({ length: chat.requestedImageCount }, (_, index) => {
             const image = images.find((img) => img.index === index);
             if (image) {
@@ -394,6 +423,7 @@ export function ChatPage() {
                   label={`Generated image ${index + 1}`}
                   isChecked={selectedGeneratedIds.has(image.imageId)}
                   onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
+                  isRefining={refiningImageIds.has(image.imageId)}
                   onClick={() => openLightbox(image.imageId)}
                 />
               );
@@ -411,17 +441,8 @@ export function ChatPage() {
             return <ChatImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
           })}
 
-          {uploadedImages.map((ref) => (
-            <ChatImageTile
-              key={`reference-${ref.index}`}
-              status="loaded"
-              dataUrl={ref.dataUrl}
-              label={`Reference photo ${ref.index + 1}`}
-              isChecked={selectedReferenceIndices.has(ref.index)}
-              onToggleCheck={() => toggleReferenceSelection(ref.index)}
-              isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
-              onClick={() => openLightbox(`reference-${ref.index}`)}
-            />
+          {Array.from({ length: pendingNewImageCount }, (_, i) => (
+            <ChatImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
           ))}
         </div>
 

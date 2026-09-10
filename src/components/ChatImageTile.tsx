@@ -11,6 +11,8 @@ interface ChatImageTileProps {
   onToggleCheck?: () => void;
   /** Shown on an uploaded image added mid-chat (Chunk 5), never on the original upload set. */
   isNewlyAdded?: boolean;
+  /** This already-loaded image is being refined in place - keep it visible but overlay a spinner rather than blanking it like status="loading" does. */
+  isRefining?: boolean;
   onClick?: () => void;
   onRetry?: () => void;
 }
@@ -22,6 +24,7 @@ export function ChatImageTile({
   isChecked,
   onToggleCheck,
   isNewlyAdded,
+  isRefining,
   onClick,
   onRetry,
 }: ChatImageTileProps) {
@@ -31,6 +34,12 @@ export function ChatImageTile({
         <button type="button" className={styles.tileButton} onClick={onClick}>
           <img src={dataUrl} alt={label} className={styles.image} />
         </button>
+      )}
+
+      {status === "loaded" && isRefining && (
+        <div className={styles.refiningOverlay}>
+          <Spinner />
+        </div>
       )}
 
       {status === "loaded" && isNewlyAdded && <span className={styles.badge}>Added</span>}
