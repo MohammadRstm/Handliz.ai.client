@@ -323,7 +323,20 @@ export function ChatPage() {
   // meaningful action on its own - free text is only required for the Gemini-only refine
   // branch, which has no other action to take.
   const willUseGpt = selectedReferenceIndices.size > 0;
-  const canSubmit = instruction.trim().length > 0 || willUseGpt;
+  // A parameter actually differing from the chat's current persisted value is itself a
+  // request to update the photo, same as typing a change would be - mirrors the backend's
+  // own hasParamChanges check in EditChatImagesAsync. ImageCount is deliberately excluded:
+  // it only governs how many brand-new images the GPT branch produces, so changing it has
+  // no effect on a Gemini-only refine and shouldn't unlock submitting with no instruction.
+  const hasParamChanges = chat
+    ? editTimeOfDay !== chat.timeOfDay ||
+      editWeather !== chat.weather ||
+      editLocation.trim() !== chat.location ||
+      editAspectRatio !== chat.aspectRatio ||
+      editModelKey !== chat.model.key ||
+      editImageSize !== chat.imageSize
+    : false;
+  const canSubmit = instruction.trim().length > 0 || willUseGpt || hasParamChanges;
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
