@@ -15,8 +15,9 @@ import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPic
 import { ChatImageTile } from "../components/ChatImageTile";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { AttachIcon, BackArrowIcon, HamburgerIcon } from "../components/icons";
+import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
+import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
 import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import styles from "./ChatPage.module.css";
@@ -65,6 +66,8 @@ export function ChatPage() {
   const [editLocation, setEditLocation] = useState("");
   const [editAspectRatio, setEditAspectRatio] = useState("");
   const [editImageCount, setEditImageCount] = useState(1);
+  const [editModelKey, setEditModelKey] = useState("");
+  const [editImageSize, setEditImageSize] = useState("");
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<Error | null>(null);
@@ -143,6 +146,8 @@ export function ChatPage() {
         setEditLocation(response.location);
         setEditAspectRatio(response.aspectRatio);
         setEditImageCount(Math.min(response.requestedImageCount || 1, models.maxGeneratedImages));
+        setEditModelKey(response.model.key);
+        setEditImageSize(response.imageSize);
 
         if (!response.title && titleKickedOffForChatId.current !== chatId) {
           titleKickedOffForChatId.current = chatId;
@@ -201,6 +206,38 @@ export function ChatPage() {
     return [...generatedItems, ...referenceItems];
   }, [images, uploadedImages]);
 
+  const handleSelectModel = (key: string) => {
+    setEditModelKey(key);
+    const model = catalog?.models.find((m) => m.key === key);
+    if (model) setEditImageSize(model.defaultImageSize);
+  };
+
+  // Backspace (and, defensively, Delete) can trigger a browser's native "navigate back"
+  // behavior when focus isn't in a text field - which would silently unmount this page
+  // and read, to a user who just selected an image with the checkbox overlay, as the
+  // image having been deleted. There is no delete-image feature here, so both keys are
+  // fully neutralized outside of actual text inputs; as a useful side effect they also
+  // clear the current selection instead of doing nothing.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+      const target = event.target as HTMLElement | null;
+      const isEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable;
+      if (isEditable) return;
+
+      event.preventDefault();
+      setSelectedGeneratedIds(new Set());
+      setSelectedReferenceIndices(new Set());
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const openLightbox = (itemId: string) => {
     const index = lightboxItems.findIndex((item) => item.id === itemId);
     if (index === -1) return;
@@ -245,10 +282,16 @@ export function ChatPage() {
   };
 
   const hasSelection = selectedGeneratedIds.size > 0 || selectedReferenceIndices.size > 0;
+  // Mirrors the backend's own branch decision (EditChatImagesAsync): any uploaded/source
+  // image in the selection re-invokes the full GPT -> Gemini pipeline, which is a
+  // meaningful action on its own - free text is only required for the Gemini-only refine
+  // branch, which has no other action to take.
+  const willUseGpt = selectedReferenceIndices.size > 0;
+  const canSubmit = instruction.trim().length > 0 || willUseGpt;
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!chatId || !accessToken || !instruction.trim() || isEditing) return;
+    if (!chatId || !accessToken || !canSubmit || isEditing) return;
 
     setIsEditing(true);
     setEditError(null);
@@ -264,6 +307,8 @@ export function ChatPage() {
           location: editLocation,
           aspectRatio: editAspectRatio,
           imageCount: editImageCount,
+          modelKey: editModelKey,
+          imageSize: editImageSize,
         },
         accessToken,
       );
@@ -275,7 +320,21 @@ export function ChatPage() {
           prev.map((img) => response.updatedImages.find((u) => u.imageId === img.imageId) ?? img),
         );
       }
-      setChat((prev) => (prev ? { ...prev, requestedImageCount: response.requestedImageCount } : prev));
+      const selectedModel = catalog?.models.find((m) => m.key === editModelKey);
+      setChat((prev) =>
+        prev
+          ? {
+              ...prev,
+              requestedImageCount: response.requestedImageCount,
+              timeOfDay: editTimeOfDay,
+              weather: editWeather,
+              location: editLocation,
+              aspectRatio: editAspectRatio,
+              imageSize: editImageSize,
+              model: selectedModel ? { key: selectedModel.key, displayName: selectedModel.displayName } : prev.model,
+            }
+          : prev,
+      );
       setInstruction("");
       setSelectedGeneratedIds(new Set());
       setSelectedReferenceIndices(new Set());
@@ -439,15 +498,32 @@ export function ChatPage() {
                 </div>
               </Dropdown>
 
-              <div className={styles.lockedDropdown} title="Model is fixed for this chat">
-                {chat.model.displayName}
-              </div>
               <div className={styles.lockedDropdown} title="Current aspect ratio">
                 <AspectRatioIcon ratio={editAspectRatio} />
                 {editAspectRatio}
               </div>
 
-              <button type="submit" className={styles.sendButton} disabled={!instruction.trim() || isEditing}>
+              <Dropdown
+                trigger={
+                  <span className={styles.modelTrigger}>
+                    {catalog.models.find((m) => m.key === editModelKey)?.displayName ?? "Model"}
+                    <ChevronUpDownIcon />
+                  </span>
+                }
+                align="right"
+                disabled={isEditing}
+              >
+                <ModelPicker
+                  models={catalog.models}
+                  selectedKey={editModelKey}
+                  onSelectKey={handleSelectModel}
+                  selectedImageSize={editImageSize}
+                  onSelectImageSize={setEditImageSize}
+                  disabled={isEditing}
+                />
+              </Dropdown>
+
+              <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing}>
                 {isEditing ? <Spinner /> : "Send"}
               </button>
             </div>

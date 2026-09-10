@@ -130,6 +130,7 @@ export interface UploadReferenceImageResponse {
  * value for later ones.
  */
 export interface EditImagesParams {
+  /** Required unless selectedReferenceIndices is non-empty - see the type doc above. */
   instruction: string;
   selectedGeneratedImageIds: string[];
   selectedReferenceIndices: number[];
@@ -138,6 +139,8 @@ export interface EditImagesParams {
   location: string;
   aspectRatio: string;
   imageCount: number;
+  modelKey: string;
+  imageSize: string;
 }
 
 export interface EditImagesResponse {
