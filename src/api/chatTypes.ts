@@ -115,6 +115,41 @@ export interface RefineImageResponse {
   refineMs: number;
 }
 
+export interface UploadReferenceImageResponse {
+  success: true;
+  referenceImage: UploadedReferenceImageDto;
+}
+
+/**
+ * Which pipeline branch runs is decided entirely by selectedReferenceIndices (see the
+ * backend's IImagePipeline.EditChatImagesAsync): non-empty means at least one
+ * uploaded/source image is part of the edit, which always re-invokes GPT; otherwise
+ * Gemini is called directly against selectedGeneratedImageIds, or - if that's empty too,
+ * the "nothing manually selected" default - every currently generated image. A non-null
+ * parameter field both applies to this request and persists as the chat's new current
+ * value for later ones.
+ */
+export interface EditImagesParams {
+  instruction: string;
+  selectedGeneratedImageIds: string[];
+  selectedReferenceIndices: number[];
+  timeOfDay: TimeOfDay;
+  weather: WeatherCondition;
+  location: string;
+  aspectRatio: string;
+  imageCount: number;
+}
+
+export interface EditImagesResponse {
+  success: true;
+  usedGpt: boolean;
+  /** Populated (same ids as before) when the Gemini-only refine branch ran. */
+  updatedImages: GeneratedImageDto[];
+  /** Populated (brand-new ids, appended past the end of the grid) when the GPT-re-prompt branch ran. */
+  newImages: GeneratedImageDto[];
+  requestedImageCount: number;
+}
+
 export interface StartChatParams {
   images: File[];
   timeOfDay: TimeOfDay;

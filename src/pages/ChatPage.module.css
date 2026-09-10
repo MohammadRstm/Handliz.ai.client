@@ -36,6 +36,23 @@
   text-decoration: underline;
 }
 
+/* Icon-only back button (Chunk 6) - no background/border at rest, matching the rest of
+   the icon-only controls introduced for the composer (hover-only highlight). */
+.backIconLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.backIconLink:hover {
+  background: var(--color-surface-alt);
+}
+
 .title {
   margin: 8px 0 2px;
   font-size: 20px;
@@ -159,6 +176,54 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+}
+
+/* Icon-only "add a photo to this chat" trigger, left of the input row (Chunk 5) - the
+   compact counterpart to the main page's large drag-and-drop dropzone. */
+.attachButton {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachButton:hover:not(:disabled) {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.attachButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settingField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.settingField select,
+.settingField input[type="text"] {
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  /* background-color, not the background shorthand: the shorthand resets
+     background-image to none, which would erase the <select> chevron set in index.css. */
+  background-color: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .sendButton {

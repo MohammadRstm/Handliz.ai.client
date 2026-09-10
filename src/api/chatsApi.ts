@@ -2,6 +2,8 @@ import { apiGet, apiPostForm, apiPostJson } from "./client";
 import type {
   ChatDetailResponse,
   ChatListResponse,
+  EditImagesParams,
+  EditImagesResponse,
   GeneratedImageDto,
   GeneratePromptResponse,
   GenerateTitleResponse,
@@ -9,6 +11,7 @@ import type {
   RefineImageResponse,
   StartChatParams,
   StartChatResponse,
+  UploadReferenceImageResponse,
 } from "./chatTypes";
 
 const BASE_PATH = "/api/chats";
@@ -71,4 +74,30 @@ export function refineImage(
   signal?: AbortSignal,
 ): Promise<RefineImageResponse> {
   return apiPostJson<RefineImageResponse>(`${BASE_PATH}/images/${imageId}/refine`, { instruction }, { accessToken, signal });
+}
+
+/** Adds one more uploaded/source image to an existing chat (the small icon left of the chat input, not the main-page dropzone). */
+export function uploadReferenceImage(
+  chatId: string,
+  file: File,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<UploadReferenceImageResponse> {
+  const form = new FormData();
+  form.append("image", file);
+  return apiPostForm<UploadReferenceImageResponse>(`${BASE_PATH}/${chatId}/images/upload`, form, { accessToken, signal });
+}
+
+/**
+ * Applies one edit instruction to a chat's images. The backend alone decides (from
+ * selectedReferenceIndices) whether GPT is re-invoked or Gemini is called directly -
+ * never inferred here from which UI affordance the user clicked.
+ */
+export function editImages(
+  chatId: string,
+  params: EditImagesParams,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<EditImagesResponse> {
+  return apiPostJson<EditImagesResponse>(`${BASE_PATH}/${chatId}/edit`, params, { accessToken, signal });
 }

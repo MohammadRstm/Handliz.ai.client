@@ -40,3 +40,42 @@ export function ChevronUpDownIcon({ size = 14 }: IconProps) {
     </svg>
   );
 }
+
+/** A bare leftward arrow - the icon-only "back to chats" trigger. */
+export function BackArrowIcon({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M15 9H3M3 9L8 4M3 9L8 14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A paperclip - the "add another photo to this chat" trigger, left of the chat input. */
+export function AttachIcon({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M12.5 6.5L7.4 11.6a2.1 2.1 0 1 1-3-3l5.9-5.9a3.2 3.2 0 0 1 4.5 4.5L9 12.9a4.3 4.3 0 1 1-6-6l5.6-5.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A bare checkmark - the manual image-selection indicator. */
+export function CheckIcon({ size = 14 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M2.5 7.2L5.5 10.5L11.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

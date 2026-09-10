@@ -2,14 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as chatsApi from "../api/chatsApi";
 import { ApiError } from "../api/client";
-import type { ChatDetailResponse, GeneratedImageDto } from "../api/chatTypes";
+import type {
+  ChatDetailResponse,
+  GeneratedImageDto,
+  ImageModelsResponse,
+  TimeOfDay,
+  UploadedReferenceImageDto,
+  WeatherCondition,
+} from "../api/chatTypes";
 import { useAuth } from "../auth/useAuth";
-import { AspectRatioIcon } from "../components/AspectRatioPicker";
+import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPicker";
 import { ChatImageTile } from "../components/ChatImageTile";
+import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { AttachIcon, BackArrowIcon, HamburgerIcon } from "../components/icons";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
 import { Spinner } from "../components/Spinner";
-import { MAX_INSTRUCTION_LENGTH } from "../constants";
+import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import styles from "./ChatPage.module.css";
 
 function toError(err: unknown): ApiError | Error {
@@ -22,18 +31,44 @@ export function ChatPage() {
   const { accessToken } = useAuth();
 
   const [chat, setChat] = useState<ChatDetailResponse | null>(null);
+  const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   const [images, setImages] = useState<GeneratedImageDto[]>([]);
+  const [uploadedImages, setUploadedImages] = useState<UploadedReferenceImageDto[]>([]);
   const [generatingIndices, setGeneratingIndices] = useState<Set<number>>(new Set());
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
 
-  const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  // The images the chat originally started with never carry the "Added" badge - only
+  // images uploaded later, in-chat, do (Chunk 5). Captured once, at load.
+  const originalReferenceCount = useRef<number | null>(null);
+
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  // Manual selection for editing (Chunks 7/8) - two distinct sets, never merged, so the
+  // state model itself (not array ordering or a UI label) is what keeps "uploaded" and
+  // "generated" apart. Empty-both is the default: apply to every currently generated
+  // image, never to uploaded ones.
+  const [selectedGeneratedIds, setSelectedGeneratedIds] = useState<Set<string>>(new Set());
+  const [selectedReferenceIndices, setSelectedReferenceIndices] = useState<Set<number>>(new Set());
+
   const [instruction, setInstruction] = useState("");
-  const [isRefining, setIsRefining] = useState(false);
-  const [refineError, setRefineError] = useState<Error | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState<Error | null>(null);
+
+  // In-chat editable generation parameters (Chunk 9) - seeded from the chat's current
+  // values once it loads, then editable via the settings dropdown. Sent with every edit
+  // request; the backend both applies them to that request and persists them as the
+  // chat's new current values for subsequent ones.
+  const [editTimeOfDay, setEditTimeOfDay] = useState<TimeOfDay>("GoldenHour");
+  const [editWeather, setEditWeather] = useState<WeatherCondition>("Clear");
+  const [editLocation, setEditLocation] = useState("");
+  const [editAspectRatio, setEditAspectRatio] = useState("");
+  const [editImageCount, setEditImageCount] = useState(1);
+
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<Error | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const imagesKickedOffForChatId = useRef<string | null>(null);
   const promptKickedOffForChatId = useRef<string | null>(null);
@@ -94,12 +129,20 @@ export function ChatPage() {
     if (!chatId || !accessToken) return;
     let cancelled = false;
 
-    chatsApi
-      .getChat(chatId, accessToken)
-      .then((response) => {
+    Promise.all([chatsApi.getChat(chatId, accessToken), chatsApi.getImageModels(accessToken)])
+      .then(([response, models]) => {
         if (cancelled) return;
         setChat(response);
+        setCatalog(models);
         setImages(response.images);
+        setUploadedImages(response.referenceImages);
+        originalReferenceCount.current = response.referenceImages.length;
+
+        setEditTimeOfDay(response.timeOfDay as TimeOfDay);
+        setEditWeather(response.weather as WeatherCondition);
+        setEditLocation(response.location);
+        setEditAspectRatio(response.aspectRatio);
+        setEditImageCount(Math.min(response.requestedImageCount || 1, models.maxGeneratedImages));
 
         if (!response.title && titleKickedOffForChatId.current !== chatId) {
           titleKickedOffForChatId.current = chatId;
@@ -150,45 +193,96 @@ export function ChatPage() {
       .slice()
       .sort((a, b) => a.index - b.index)
       .map((img) => ({ id: img.imageId, dataUrl: img.dataUrl, label: `Generated image ${img.index + 1}` }));
-    const referenceItems: LightboxItem[] =
-      chat?.referenceImages.map((ref) => ({
-        id: `reference-${ref.index}`,
-        dataUrl: ref.dataUrl,
-        label: `Reference photo ${ref.index + 1}`,
-      })) ?? [];
+    const referenceItems: LightboxItem[] = uploadedImages.map((ref) => ({
+      id: `reference-${ref.index}`,
+      dataUrl: ref.dataUrl,
+      label: `Reference photo ${ref.index + 1}`,
+    }));
     return [...generatedItems, ...referenceItems];
-  }, [images, chat]);
+  }, [images, uploadedImages]);
 
-  const openLightbox = (itemId: string, isGenerated: boolean) => {
+  const openLightbox = (itemId: string) => {
     const index = lightboxItems.findIndex((item) => item.id === itemId);
     if (index === -1) return;
     setLightboxIndex(index);
-    setActiveImageId(isGenerated ? itemId : null);
   };
 
-  const handleLightboxNavigate = (index: number) => {
-    setLightboxIndex(index);
-    const item = lightboxItems[index];
-    const isGenerated = item && !item.id.startsWith("reference-");
-    setActiveImageId(isGenerated ? item.id : null);
+  const toggleGeneratedSelection = (imageId: string) => {
+    setSelectedGeneratedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(imageId)) next.delete(imageId);
+      else next.add(imageId);
+      return next;
+    });
   };
 
-  const handleRefine = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!activeImageId || !instruction.trim() || !accessToken || isRefining) return;
+  const toggleReferenceSelection = (index: number) => {
+    setSelectedReferenceIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
-    setIsRefining(true);
-    setRefineError(null);
+  const handleAttachClick = () => fileInputRef.current?.click();
+
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (!file || !chatId || !accessToken) return;
+
+    setIsUploadingImage(true);
+    setUploadError(null);
     try {
-      const response = await chatsApi.refineImage(activeImageId, instruction.trim(), accessToken);
-      setImages((prev) =>
-        prev.map((img) => (img.imageId === response.imageId ? { ...img, dataUrl: response.dataUrl, mimeType: response.mimeType } : img)),
-      );
-      setInstruction("");
+      const response = await chatsApi.uploadReferenceImage(chatId, file, accessToken);
+      setUploadedImages((prev) => [...prev, response.referenceImage]);
     } catch (err) {
-      setRefineError(toError(err));
+      setUploadError(toError(err));
     } finally {
-      setIsRefining(false);
+      setIsUploadingImage(false);
+    }
+  };
+
+  const hasSelection = selectedGeneratedIds.size > 0 || selectedReferenceIndices.size > 0;
+
+  const handleEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!chatId || !accessToken || !instruction.trim() || isEditing) return;
+
+    setIsEditing(true);
+    setEditError(null);
+    try {
+      const response = await chatsApi.editImages(
+        chatId,
+        {
+          instruction: instruction.trim(),
+          selectedGeneratedImageIds: Array.from(selectedGeneratedIds),
+          selectedReferenceIndices: Array.from(selectedReferenceIndices),
+          timeOfDay: editTimeOfDay,
+          weather: editWeather,
+          location: editLocation,
+          aspectRatio: editAspectRatio,
+          imageCount: editImageCount,
+        },
+        accessToken,
+      );
+
+      if (response.usedGpt) {
+        setImages((prev) => [...prev, ...response.newImages].sort((a, b) => a.index - b.index));
+      } else {
+        setImages((prev) =>
+          prev.map((img) => response.updatedImages.find((u) => u.imageId === img.imageId) ?? img),
+        );
+      }
+      setChat((prev) => (prev ? { ...prev, requestedImageCount: response.requestedImageCount } : prev));
+      setInstruction("");
+      setSelectedGeneratedIds(new Set());
+      setSelectedReferenceIndices(new Set());
+    } catch (err) {
+      setEditError(toError(err));
+    } finally {
+      setIsEditing(false);
     }
   };
 
@@ -205,7 +299,7 @@ export function ChatPage() {
     );
   }
 
-  if (!chat) {
+  if (!chat || !catalog) {
     return (
       <div className={styles.loadingPage}>
         <Spinner label="Loading chat..." />
@@ -213,13 +307,11 @@ export function ChatPage() {
     );
   }
 
-  const activeImage = images.find((img) => img.imageId === activeImageId);
-
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link to="/" className={styles.backLink}>
-          ← Chats
+        <Link to="/" className={styles.backIconLink} aria-label="Back to chats" title="Back to chats">
+          <BackArrowIcon />
         </Link>
         <h1 className={styles.title}>
           {chat.title ?? chat.location}
@@ -241,8 +333,9 @@ export function ChatPage() {
                   status="loaded"
                   dataUrl={image.dataUrl}
                   label={`Generated image ${index + 1}`}
-                  isSelected={activeImageId === image.imageId}
-                  onClick={() => openLightbox(image.imageId, true)}
+                  isChecked={selectedGeneratedIds.has(image.imageId)}
+                  onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
+                  onClick={() => openLightbox(image.imageId)}
                 />
               );
             }
@@ -259,48 +352,107 @@ export function ChatPage() {
             return <ChatImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
           })}
 
-          {chat.referenceImages.map((ref) => (
+          {uploadedImages.map((ref) => (
             <ChatImageTile
               key={`reference-${ref.index}`}
               status="loaded"
               dataUrl={ref.dataUrl}
               label={`Reference photo ${ref.index + 1}`}
-              onClick={() => openLightbox(`reference-${ref.index}`, false)}
+              isChecked={selectedReferenceIndices.has(ref.index)}
+              onToggleCheck={() => toggleReferenceSelection(ref.index)}
+              isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
+              onClick={() => openLightbox(`reference-${ref.index}`)}
             />
           ))}
         </div>
 
         {generatingIndices.size === 0 && images.length > 0 && (
-          <form className={styles.refineBar} onSubmit={handleRefine}>
+          <form className={styles.refineBar} onSubmit={handleEdit}>
             <div className={styles.refineTarget}>
-              {activeImage
-                ? `Refining image ${activeImage.index + 1}`
-                : "Click a generated image above to refine it"}
+              {hasSelection
+                ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s)`
+                : "Editing all recently generated images"}
             </div>
             <div className={styles.refineInputRow}>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
+              <button
+                type="button"
+                className={styles.attachButton}
+                onClick={handleAttachClick}
+                disabled={isUploadingImage || isEditing}
+                aria-label="Add another photo to this chat"
+                title="Add another photo to this chat"
+              >
+                {isUploadingImage ? <Spinner /> : <AttachIcon />}
+              </button>
+
               <input
                 type="text"
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
-                placeholder="Describe a change..."
+                placeholder={
+                  hasSelection ? "Edit only the selected images..." : "Describe an edit to apply to your recent images..."
+                }
                 maxLength={MAX_INSTRUCTION_LENGTH}
-                disabled={!activeImageId || isRefining}
+                disabled={isEditing}
                 className={styles.refineInput}
               />
 
-              <div className={styles.lockedDropdown} title="Locked for this chat">
+              <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing}>
+                <label className={styles.settingField}>
+                  <span>Time of day</span>
+                  <select value={editTimeOfDay} onChange={(e) => setEditTimeOfDay(e.target.value as TimeOfDay)}>
+                    {TIME_OF_DAY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.settingField}>
+                  <span>Weather</span>
+                  <select value={editWeather} onChange={(e) => setEditWeather(e.target.value as WeatherCondition)}>
+                    {WEATHER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.settingField}>
+                  <span>Location</span>
+                  <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} maxLength={200} />
+                </label>
+                <label className={styles.settingField}>
+                  <span>Number of new images</span>
+                  <select value={editImageCount} onChange={(e) => setEditImageCount(Number(e.target.value))}>
+                    {Array.from({ length: catalog.maxGeneratedImages }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className={styles.settingField}>
+                  <span>Aspect ratio</span>
+                  <AspectRatioPicker ratios={catalog.supportedAspectRatios} selected={editAspectRatio} onSelect={setEditAspectRatio} />
+                </div>
+              </Dropdown>
+
+              <div className={styles.lockedDropdown} title="Model is fixed for this chat">
                 {chat.model.displayName}
               </div>
-              <div className={styles.lockedDropdown} title="Locked for this chat">
-                <AspectRatioIcon ratio={chat.aspectRatio} />
-                {chat.aspectRatio} · {chat.imageSize}
+              <div className={styles.lockedDropdown} title="Current aspect ratio">
+                <AspectRatioIcon ratio={editAspectRatio} />
+                {editAspectRatio}
               </div>
 
-              <button type="submit" className={styles.sendButton} disabled={!activeImageId || !instruction.trim() || isRefining}>
-                {isRefining ? <Spinner /> : "Send"}
+              <button type="submit" className={styles.sendButton} disabled={!instruction.trim() || isEditing}>
+                {isEditing ? <Spinner /> : "Send"}
               </button>
             </div>
-            {refineError && <ErrorBanner error={refineError} onDismiss={() => setRefineError(null)} />}
+            {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
+            {editError && <ErrorBanner error={editError} onDismiss={() => setEditError(null)} />}
           </form>
         )}
       </main>
@@ -309,7 +461,7 @@ export function ChatPage() {
         <Lightbox
           items={lightboxItems}
           activeIndex={lightboxIndex}
-          onNavigate={handleLightboxNavigate}
+          onNavigate={setLightboxIndex}
           onClose={() => setLightboxIndex(null)}
         />
       )}
