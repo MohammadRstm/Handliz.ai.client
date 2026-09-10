@@ -57,14 +57,12 @@
   max-width: 1040px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 20px 60px;
+  /* Bottom padding clears the floating composer bar (~230px tall including its own
+     bottom offset) so the last row of cards is never hidden behind it. */
+  padding: 0 20px 260px;
   display: flex;
   flex-direction: column;
   gap: 28px;
-}
-
-.errorSlot {
-  margin-bottom: -12px;
 }
 
 .loading {
@@ -84,4 +82,25 @@
   color: var(--color-text-muted);
   font-size: 14px;
   padding: 40px 0;
+}
+
+/* Fixed with a bottom offset (not flush to the edge) so it reads as a card floating
+   above the history grid, with its own shadow visible on every side, rather than a
+   docked bottom sheet. */
+.composerBar {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 20px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.errorSlot {
+  margin: 0;
 }

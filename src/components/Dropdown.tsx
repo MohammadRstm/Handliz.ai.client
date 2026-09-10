@@ -1,16 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import styles from "./Dropdown.module.css";
 
+const DROPDOWN_OPEN_EVENT = "handliz:dropdown-open";
+
 interface DropdownProps {
-  label: string;
+  /** Full trigger content - callers own their own icon/text/arrow, Dropdown adds no chevron of its own. */
+  trigger: React.ReactNode;
   disabled?: boolean;
   children: React.ReactNode;
+  /** Which edge of the trigger the panel's matching edge aligns to. Default "left". */
+  align?: "left" | "right";
 }
 
-/** A button that toggles a floating panel below it, closing on outside click or Escape. */
-export function Dropdown({ label, disabled, children }: DropdownProps) {
+/**
+ * A button that toggles a floating panel below it, closing on outside click, Escape, or
+ * (via a broadcast custom event, since each instance is otherwise independent) whenever a
+ * different Dropdown on the page opens - only one should ever be open at a time. The
+ * trigger itself has no background/border by default, only a hover state - see
+ * Dropdown.module.css.
+ */
+export function Dropdown({ trigger, disabled, children, align = "left" }: DropdownProps) {
+  const instanceId = useId();
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOtherOpened = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== instanceId) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener(DROPDOWN_OPEN_EVENT, handleOtherOpened);
+    return () => document.removeEventListener(DROPDOWN_OPEN_EVENT, handleOtherOpened);
+  }, [instanceId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -32,21 +54,27 @@ export function Dropdown({ label, disabled, children }: DropdownProps) {
     };
   }, [isOpen]);
 
+  const handleToggle = () => {
+    setIsOpen((wasOpen) => {
+      const willOpen = !wasOpen;
+      if (willOpen) {
+        document.dispatchEvent(new CustomEvent(DROPDOWN_OPEN_EVENT, { detail: instanceId }));
+      }
+      return willOpen;
+    });
+  };
+
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
-      <button
-        type="button"
-        className={styles.trigger}
-        onClick={() => setIsOpen((v) => !v)}
-        disabled={disabled}
-      >
-        {label}
-        <span className={styles.chevron} aria-hidden="true">
-          ▾
-        </span>
+      <button type="button" className={styles.trigger} onClick={handleToggle} disabled={disabled}>
+        {trigger}
       </button>
       {isOpen && !disabled && (
-        <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.panel}
+          style={align === "right" ? { right: 0, left: "auto" } : undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
           {children}
         </div>
       )}

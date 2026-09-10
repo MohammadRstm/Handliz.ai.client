@@ -55,6 +55,22 @@ textarea {
   color: inherit;
 }
 
+/* Native <select> ignores author border/border-radius/background under its default
+   platform chrome (which renders a plain, often light/white-edged box regardless of
+   theme) unless appearance is reset - this is why select borders looked square and
+   white despite every component already declaring var(--color-border) and a radius.
+   A custom chevron replaces the one appearance:none removes. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239a9aa5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px 6px;
+  padding-right: 28px !important;
+}
+
 ::selection {
   background: var(--color-accent);
   color: var(--color-accent-contrast);

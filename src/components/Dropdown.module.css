@@ -2,14 +2,16 @@
   position: relative;
 }
 
+/* No background/border by default - only a hover highlight. Callers supply their own
+   trigger content (icon, text, arrow) via the `trigger` prop. */
 .trigger {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-alt);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--color-text);
   font-size: 13px;
   font-weight: 600;
@@ -18,23 +20,18 @@
 }
 
 .trigger:hover:not(:disabled) {
-  border-color: var(--color-accent);
+  background: var(--color-surface-alt);
 }
 
 .trigger:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
-}
-
-.chevron {
-  font-size: 10px;
-  opacity: 0.7;
 }
 
 .panel {
   position: absolute;
   bottom: calc(100% + 8px);
-  right: 0;
+  left: 0;
   min-width: 240px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);

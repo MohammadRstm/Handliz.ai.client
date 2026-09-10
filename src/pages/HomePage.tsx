@@ -83,13 +83,6 @@ export function HomePage() {
 
         {catalog && (
           <>
-            {startError && (
-              <div className={styles.errorSlot}>
-                <ErrorBanner error={startError} onDismiss={() => setStartError(null)} />
-              </div>
-            )}
-            <ChatComposer catalog={catalog} onSubmit={handleStartChat} isSubmitting={isStarting} />
-
             {chats && chats.length > 0 && (
               <div className={styles.grid}>
                 {chats.map((chat) => (
@@ -99,11 +92,22 @@ export function HomePage() {
             )}
 
             {chats && chats.length === 0 && (
-              <p className={styles.emptyState}>No chats yet - start one above.</p>
+              <p className={styles.emptyState}>No chats yet - start one below.</p>
             )}
           </>
         )}
       </main>
+
+      {catalog && (
+        <div className={styles.composerBar}>
+          {startError && (
+            <div className={styles.errorSlot}>
+              <ErrorBanner error={startError} onDismiss={() => setStartError(null)} />
+            </div>
+          )}
+          <ChatComposer catalog={catalog} onSubmit={handleStartChat} isSubmitting={isStarting} />
+        </div>
+      )}
     </div>
   );
 }

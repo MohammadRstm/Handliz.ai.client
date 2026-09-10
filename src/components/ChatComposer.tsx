@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import type { ImageModelsResponse, StartChatParams, TimeOfDay, WeatherCondition } from "../api/chatTypes";
 import { TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
+import { AspectRatioPicker } from "./AspectRatioPicker";
 import { Dropdown } from "./Dropdown";
+import { ChevronUpDownIcon, HamburgerIcon, SendArrowIcon } from "./icons";
 import { ImageUploader } from "./ImageUploader";
 import { ModelPicker } from "./ModelPicker";
 import { Spinner } from "./Spinner";
@@ -86,18 +88,7 @@ export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerPr
           disabled={isSubmitting}
         />
 
-        <Dropdown label={selectedModel?.displayName ?? "Model"} disabled={isSubmitting}>
-          <ModelPicker
-            models={catalog.models}
-            selectedKey={modelKey}
-            onSelectKey={handleSelectModel}
-            selectedImageSize={imageSize}
-            onSelectImageSize={setImageSize}
-            disabled={isSubmitting}
-          />
-        </Dropdown>
-
-        <Dropdown label="Settings" disabled={isSubmitting}>
+        <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isSubmitting}>
           <label className={styles.settingField}>
             <span>Time of day</span>
             <select value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value as TimeOfDay)}>
@@ -128,22 +119,45 @@ export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerPr
               ))}
             </select>
           </label>
-          <label className={styles.settingField}>
+          <div className={styles.settingField}>
             <span>Aspect ratio</span>
-            <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)}>
-              {catalog.supportedAspectRatios.map((ratio) => (
-                <option key={ratio} value={ratio}>
-                  {ratio}
-                </option>
-              ))}
-            </select>
-          </label>
+            <AspectRatioPicker
+              ratios={catalog.supportedAspectRatios}
+              selected={aspectRatio}
+              onSelect={setAspectRatio}
+              disabled={isSubmitting}
+            />
+          </div>
         </Dropdown>
 
-        <button type="submit" className={styles.sendButton} disabled={!isValid || isSubmitting}>
-          {isSubmitting ? <Spinner /> : "Generate"}
+        <button
+          type="submit"
+          className={styles.sendButton}
+          disabled={!isValid || isSubmitting}
+          aria-label="Generate"
+        >
+          {isSubmitting ? <Spinner /> : <SendArrowIcon />}
         </button>
       </div>
+
+      <Dropdown
+        trigger={
+          <span className={styles.modelTrigger}>
+            {selectedModel?.displayName ?? "Model"}
+            <ChevronUpDownIcon />
+          </span>
+        }
+        disabled={isSubmitting}
+      >
+        <ModelPicker
+          models={catalog.models}
+          selectedKey={modelKey}
+          onSelectKey={handleSelectModel}
+          selectedImageSize={imageSize}
+          onSelectImageSize={setImageSize}
+          disabled={isSubmitting}
+        />
+      </Dropdown>
     </form>
   );
 }

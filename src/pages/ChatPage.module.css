@@ -51,7 +51,7 @@
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 100px;
+  padding: 24px 20px 140px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -63,17 +63,27 @@
   gap: 14px;
 }
 
+/* Fixed (not sticky) to the viewport bottom: with only a few images the grid doesn't
+   fill the page, and a sticky element only pins itself while its container is tall
+   enough to scroll past it - with short content it just sits in normal flow right
+   after the grid, which is what made it look "stuck at the top" instead of anchored
+   to the bottom of the screen. Fixed always anchors it, regardless of content height. */
 .refineBar {
-  position: sticky;
-  bottom: 20px;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 900px;
+  margin: 0 auto;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: var(--shadow-md);
-  padding: 14px 16px;
+  padding: 14px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  z-index: 50;
 }
 
 .refineTarget {
@@ -109,6 +119,9 @@
 }
 
 .lockedDropdown {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
@@ -118,6 +131,12 @@
   font-weight: 600;
   white-space: nowrap;
   cursor: default;
+}
+
+.lockedDropdown svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 .sendButton {

@@ -4,6 +4,7 @@ import * as chatsApi from "../api/chatsApi";
 import { ApiError } from "../api/client";
 import type { ChatDetailResponse, GeneratedImageDto } from "../api/chatTypes";
 import { useAuth } from "../auth/useAuth";
+import { AspectRatioIcon } from "../components/AspectRatioPicker";
 import { ChatImageTile } from "../components/ChatImageTile";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
@@ -244,6 +245,7 @@ export function ChatPage() {
                 {chat.model.displayName}
               </div>
               <div className={styles.lockedDropdown} title="Locked for this chat">
+                <AspectRatioIcon ratio={chat.aspectRatio} />
                 {chat.aspectRatio} · {chat.imageSize}
               </div>
 
