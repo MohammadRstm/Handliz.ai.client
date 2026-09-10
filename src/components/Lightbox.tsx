@@ -35,40 +35,59 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
         ✕
       </button>
 
-      {items.length > 1 && (
-        <button
-          type="button"
-          className={`${styles.navButton} ${styles.prevButton}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigate((activeIndex - 1 + items.length) % items.length);
-          }}
-          aria-label="Previous"
-        >
-          ‹
-        </button>
-      )}
+      {/* Prev/next are flex siblings of the content column (image + caption + thumbnail
+          strip) in one row, not absolutely positioned against the full-screen overlay -
+          that's what let them drift off-center whenever the content's actual height
+          (which varies with image aspect ratio, and now the thumbnail strip below it)
+          didn't happen to match the viewport's own center. Flexbox's own vertical
+          centering keeps them aligned to the real content height at any size. */}
+      <div className={styles.viewerRow} onClick={(e) => e.stopPropagation()}>
+        {items.length > 1 && (
+          <button
+            type="button"
+            className={styles.navButton}
+            onClick={() => onNavigate((activeIndex - 1 + items.length) % items.length)}
+            aria-label="Previous"
+          >
+            ‹
+          </button>
+        )}
 
-      <div className={styles.imageWrapper} onClick={(e) => e.stopPropagation()}>
-        <img src={item.dataUrl} alt={item.label} className={styles.image} />
-        <p className={styles.caption}>
-          {item.label} ({activeIndex + 1}/{items.length})
-        </p>
+        <div className={styles.contentColumn}>
+          <img src={item.dataUrl} alt={item.label} className={styles.image} />
+          <p className={styles.caption}>
+            {item.label} ({activeIndex + 1}/{items.length})
+          </p>
+
+          {items.length > 1 && (
+            <div className={styles.thumbnailStrip} role="listbox" aria-label="All images">
+              {items.map((thumbItem, index) => (
+                <button
+                  key={thumbItem.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className={`${styles.thumbnail} ${index === activeIndex ? styles.thumbnailActive : ""}`}
+                  onClick={() => onNavigate(index)}
+                >
+                  <img src={thumbItem.dataUrl} alt={thumbItem.label} className={styles.thumbnailImg} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {items.length > 1 && (
+          <button
+            type="button"
+            className={styles.navButton}
+            onClick={() => onNavigate((activeIndex + 1) % items.length)}
+            aria-label="Next"
+          >
+            ›
+          </button>
+        )}
       </div>
-
-      {items.length > 1 && (
-        <button
-          type="button"
-          className={`${styles.navButton} ${styles.nextButton}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigate((activeIndex + 1) % items.length);
-          }}
-          aria-label="Next"
-        >
-          ›
-        </button>
-      )}
     </div>
   );
 }
