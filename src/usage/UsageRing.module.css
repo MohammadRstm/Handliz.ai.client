@@ -1,0 +1,82 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* A gentle pulse while a fetch is in flight - the ring itself doesn't change shape, just
+   a soft opacity breathe, so a refresh() firing after every successful generation doesn't
+   read as a jarring flicker. */
+.spinning {
+  animation: usagePulse 1s ease-in-out infinite;
+}
+
+@keyframes usagePulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.popover {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 220px;
+}
+
+.popoverHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.planName {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.trialBadge {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-accent);
+  background: rgba(167, 139, 250, 0.14);
+  padding: 3px 7px;
+  border-radius: 999px;
+}
+
+.exhaustedNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.manageLink {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: none;
+  text-align: center;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.manageLink:hover {
+  text-decoration: underline;
+}

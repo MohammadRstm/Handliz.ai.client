@@ -1,0 +1,79 @@
+.trigger {
+  display: inline-flex;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+}
+
+.identity {
+  padding: 2px 8px 8px;
+}
+
+.identityName {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.identityEmail {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.item {
+  display: block;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.item:hover {
+  background: var(--color-surface-alt);
+}
+
+.logoutItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logoutItem:hover {
+  background: var(--color-danger-bg);
+}

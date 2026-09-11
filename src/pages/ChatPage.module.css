@@ -25,6 +25,18 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.headerTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .backLink {
   font-size: 13px;
   color: var(--color-accent);

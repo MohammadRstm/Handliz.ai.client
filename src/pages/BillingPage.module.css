@@ -1,0 +1,179 @@
+.page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.backIconLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.backIconLink:hover {
+  background: var(--color-surface-alt);
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  flex: 1;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.main {
+  flex: 1;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.loading {
+  padding: 24px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.usageCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usagePlanRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.usagePlanName {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.trialBadge {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-accent);
+  background: rgba(167, 139, 250, 0.14);
+  padding: 3px 7px;
+  border-radius: 999px;
+}
+
+.exhaustedNote {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.planGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.planCard,
+.planCardCurrent {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.planCardCurrent {
+  border-color: var(--color-accent);
+}
+
+.currentBadge {
+  position: absolute;
+  top: -9px;
+  left: 14px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-accent-contrast);
+  background: var(--color-accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.planName {
+  font-size: 14.5px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.planPrice {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.planDescription {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.planCredits {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+}

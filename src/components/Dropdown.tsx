@@ -10,6 +10,13 @@ interface DropdownProps {
   children: React.ReactNode;
   /** Which edge of the trigger the panel's matching edge aligns to. Default "left". */
   align?: "left" | "right";
+  /**
+   * Which side of the trigger the panel opens toward. Default "above" - the original (and
+   * still most common) use is the in-chat composer's settings menu, anchored near the
+   * bottom of the viewport where there's no room below it. Top-of-page triggers (account
+   * menu, usage ring) want "below" instead.
+   */
+  side?: "above" | "below";
 }
 
 /**
@@ -19,7 +26,7 @@ interface DropdownProps {
  * trigger itself has no background/border by default, only a hover state - see
  * Dropdown.module.css.
  */
-export function Dropdown({ trigger, disabled, children, align = "left" }: DropdownProps) {
+export function Dropdown({ trigger, disabled, children, align = "left", side = "above" }: DropdownProps) {
   const instanceId = useId();
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -72,7 +79,10 @@ export function Dropdown({ trigger, disabled, children, align = "left" }: Dropdo
       {isOpen && !disabled && (
         <div
           className={styles.panel}
-          style={align === "right" ? { right: 0, left: "auto" } : undefined}
+          style={{
+            ...(align === "right" ? { right: 0, left: "auto" } : undefined),
+            ...(side === "below" ? { top: "calc(100% + 8px)", bottom: "auto" } : undefined),
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {children}

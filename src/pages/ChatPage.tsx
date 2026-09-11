@@ -11,6 +11,7 @@ import type {
   WeatherCondition,
 } from "../api/chatTypes";
 import { useAuth } from "../auth/useAuth";
+import { AccountMenu } from "../components/AccountMenu";
 import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPicker";
 import { ChatImageTile } from "../components/ChatImageTile";
 import { Dropdown } from "../components/Dropdown";
@@ -20,6 +21,8 @@ import { Lightbox, type LightboxItem } from "../components/Lightbox";
 import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
 import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
+import { UsageRing } from "../usage/UsageRing";
+import { useUsage } from "../usage/useUsage";
 import styles from "./ChatPage.module.css";
 
 function toError(err: unknown): ApiError | Error {
@@ -30,6 +33,7 @@ function toError(err: unknown): ApiError | Error {
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
   const { accessToken } = useAuth();
+  const { refresh: refreshUsage } = useUsage();
 
   const [chat, setChat] = useState<ChatDetailResponse | null>(null);
   const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
@@ -102,6 +106,10 @@ export function ChatPage() {
         .generateChatImage(targetChatId, index, accessToken)
         .then((dto) => {
           setImages((prev) => [...prev.filter((img) => img.index !== index), dto].sort((a, b) => a.index - b.index));
+          // Only on success: a failed call releases its credit hold rather than spending
+          // it (see the backend's fail-open metering), so usage genuinely hasn't changed
+          // when this rejects - refreshing there would just be a wasted round trip.
+          refreshUsage();
         })
         .catch(() => {
           setFailedIndices((prev) => new Set(prev).add(index));
@@ -114,7 +122,7 @@ export function ChatPage() {
           });
         });
     },
-    [accessToken],
+    [accessToken, refreshUsage],
   );
 
   const kickOffMissingImages = useCallback(
@@ -401,6 +409,10 @@ export function ChatPage() {
       setInstruction("");
       setSelectedGeneratedIds(new Set());
       setSelectedReferenceIndices(new Set());
+      // A partial failure (some images in the batch failed) still resolves rather than
+      // throwing here - see RunRefineOnlyBranchAsync/RunGptEditBranchAsync - and still
+      // settles credits for whichever images succeeded, so this fires on that path too.
+      refreshUsage();
     } catch (err) {
       setEditError(toError(err));
     } finally {
@@ -434,9 +446,15 @@ export function ChatPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link to="/" className={styles.backIconLink} aria-label="Back to chats" title="Back to chats">
-          <BackArrowIcon />
-        </Link>
+        <div className={styles.headerTopRow}>
+          <Link to="/" className={styles.backIconLink} aria-label="Back to chats" title="Back to chats">
+            <BackArrowIcon />
+          </Link>
+          <div className={styles.headerActions}>
+            <UsageRing />
+            <AccountMenu />
+          </div>
+        </div>
         <h1 className={styles.title}>
           {chat.title ?? chat.location}
           {!chat.title && <span className={styles.titleLoading} aria-label="Generating title" />}

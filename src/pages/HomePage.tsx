@@ -4,10 +4,12 @@ import * as chatsApi from "../api/chatsApi";
 import { ApiError } from "../api/client";
 import type { ChatSummaryDto, ImageModelsResponse, StartChatParams } from "../api/chatTypes";
 import { useAuth } from "../auth/useAuth";
+import { AccountMenu } from "../components/AccountMenu";
 import { ChatCard } from "../components/ChatCard";
 import { ChatComposer } from "../components/ChatComposer";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Spinner } from "../components/Spinner";
+import { UsageRing } from "../usage/UsageRing";
 import styles from "./HomePage.module.css";
 
 function toError(err: unknown): ApiError | Error {
@@ -18,7 +20,7 @@ function toError(err: unknown): ApiError | Error {
 const PAGE_SIZE = 12;
 
 export function HomePage() {
-  const { user, accessToken, logout } = useAuth();
+  const { accessToken } = useAuth();
   const navigate = useNavigate();
 
   const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
@@ -88,10 +90,8 @@ export function HomePage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.accountBar}>
-          <span className={styles.accountName}>{user?.displayName}</span>
-          <button type="button" className={styles.logoutButton} onClick={() => void logout()}>
-            Log out
-          </button>
+          <UsageRing />
+          <AccountMenu />
         </div>
         <h1 className={styles.brand}>Handliz.ai</h1>
         <p className={styles.tagline}>Turn a reference photo into on-site renders for any place, time, and weather.</p>
