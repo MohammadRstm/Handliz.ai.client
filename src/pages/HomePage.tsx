@@ -15,33 +15,58 @@ function toError(err: unknown): ApiError | Error {
   return new Error("Something went wrong.");
 }
 
+const PAGE_SIZE = 12;
+
 export function HomePage() {
   const { user, accessToken, logout } = useAuth();
   const navigate = useNavigate();
 
   const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
   const [chats, setChats] = useState<ChatSummaryDto[] | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<Error | null>(null);
 
+  // Models load once; the chat page reloads on its own whenever `page` changes, so it's
+  // kept out of the same Promise.all as the one-time models fetch below.
   useEffect(() => {
     if (!accessToken) return;
     const controller = new AbortController();
-    Promise.all([
-      chatsApi.getImageModels(accessToken, controller.signal),
-      chatsApi.listChats(accessToken, controller.signal),
-    ])
-      .then(([modelsResponse, chatsResponse]) => {
-        setCatalog(modelsResponse);
-        setChats(chatsResponse.chats);
-      })
+    chatsApi
+      .getImageModels(accessToken, controller.signal)
+      .then(setCatalog)
       .catch((err) => {
         if (!controller.signal.aborted) setLoadError(toError(err));
       });
     return () => controller.abort();
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    const controller = new AbortController();
+    chatsApi
+      .listChats(accessToken, { page, pageSize: PAGE_SIZE }, controller.signal)
+      .then((response) => {
+        setChats(response.chats);
+        setTotalCount(response.totalCount);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setLoadError(toError(err));
+      });
+    return () => controller.abort();
+  }, [accessToken, page]);
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Deleting every chat on the last page (or a page emptying out from the 30-chat cap
+  // evicting one elsewhere) can leave `page` past the end once totalCount shrinks - pull
+  // it back rather than showing a page permanently stuck empty.
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   const handleStartChat = async (params: StartChatParams) => {
     if (!accessToken) return;
@@ -92,7 +117,33 @@ export function HomePage() {
             )}
 
             {chats && chats.length === 0 && (
-              <p className={styles.emptyState}>No chats yet - start one below.</p>
+              <p className={styles.emptyState}>
+                {totalCount === 0 ? "No chats yet - start one below." : "No chats on this page."}
+              </p>
+            )}
+
+            {pageCount > 1 && (
+              <div className={styles.pager}>
+                <button
+                  type="button"
+                  className={styles.pagerButton}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  Previous
+                </button>
+                <span className={styles.pagerLabel}>
+                  Page {page} of {pageCount} · {totalCount} chat{totalCount === 1 ? "" : "s"}
+                </span>
+                <button
+                  type="button"
+                  className={styles.pagerButton}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  disabled={page >= pageCount}
+                >
+                  Next
+                </button>
+              </div>
             )}
           </>
         )}

@@ -58,6 +58,10 @@ export interface ChatSummaryDto {
 export interface ChatListResponse {
   success: true;
   chats: ChatSummaryDto[];
+  /** This user's full chat count (not just chats.length) - derive page count from it. */
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface UploadedReferenceImageDto {

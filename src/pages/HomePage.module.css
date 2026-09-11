@@ -84,6 +84,39 @@
   padding: 40px 0;
 }
 
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.pagerLabel {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.pagerButton {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pagerButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.pagerButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Fixed with a bottom offset (not flush to the edge) so it reads as a card floating
    above the history grid, with its own shadow visible on every side, rather than a
    docked bottom sheet. */

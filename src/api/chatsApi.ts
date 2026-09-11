@@ -21,8 +21,21 @@ export function getImageModels(accessToken: string, signal?: AbortSignal): Promi
   return apiGet<ImageModelsResponse>(`${BASE_PATH}/models`, { accessToken, signal });
 }
 
-export function listChats(accessToken: string, signal?: AbortSignal): Promise<ChatListResponse> {
-  return apiGet<ChatListResponse>(BASE_PATH, { accessToken, signal });
+/**
+ * A user can have at most ImagePipelineOptions.MaxChatHistory (30) chats at all - creating
+ * a 31st permanently deletes their oldest one server-side (see StartChatAsync). page is
+ * 1-based; pageSize defaults to 12 server-side if omitted.
+ */
+export function listChats(
+  accessToken: string,
+  params: { page?: number; pageSize?: number } = {},
+  signal?: AbortSignal,
+): Promise<ChatListResponse> {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiGet<ChatListResponse>(`${BASE_PATH}${suffix}`, { accessToken, signal });
 }
 
 export function getChat(chatId: string, accessToken: string, signal?: AbortSignal): Promise<ChatDetailResponse> {

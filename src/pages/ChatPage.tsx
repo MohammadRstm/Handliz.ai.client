@@ -495,12 +495,14 @@ export function ChatPage() {
           ))}
         </div>
 
-        {generatingIndices.size === 0 && images.length > 0 && (
+        {generatingIndices.size === 0 && (
           <form className={styles.refineBar} onSubmit={handleEdit}>
             <div className={styles.refineTarget}>
               {hasSelection
                 ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s) · Press Delete to remove`
-                : "Editing all recently generated images"}
+                : images.length > 0
+                  ? "Editing all recently generated images"
+                  : "Select a photo above, or attach a new one, to generate images"}
             </div>
             <div className={styles.refineInputRow}>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
