@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import styles from "./Lightbox.module.css";
 
@@ -21,15 +21,31 @@ interface LightboxProps {
 export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxProps) {
   const item = items[activeIndex];
 
+  // Two levels: the default catalogue preview (image capped at a modest height, caption
+  // and filmstrip visible below it) and, one click on the image further in, a true
+  // full-screen view with those trimmed away so the image itself gets the space. Local
+  // state rather than something the caller tracks - it's purely a display mode of this
+  // component, and resets for free every time the Lightbox unmounts (ChatPage/
+  // ImageUploader both render it conditionally on activeIndex, so closing and reopening
+  // always starts back at the catalogue level, never stuck zoomed in from a prior image).
+  const [isZoomed, setIsZoomed] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      // Escape steps back one level at a time: out of full-screen first, only closing
+      // the whole viewer on a second press (or immediately, if never zoomed in).
+      if (event.key === "Escape") {
+        if (isZoomed) setIsZoomed(false);
+        else onClose();
+      }
+      // Arrow keys move through the catalogue at either level - zoomed stays zoomed as
+      // the image underneath changes, rather than dropping back to the preview.
       if (event.key === "ArrowRight") onNavigate((activeIndex + 1) % items.length);
       if (event.key === "ArrowLeft") onNavigate((activeIndex - 1 + items.length) % items.length);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeIndex, items.length, onNavigate, onClose]);
+  }, [activeIndex, items.length, onNavigate, onClose, isZoomed]);
 
   if (!item) return null;
 
@@ -57,27 +73,43 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
           </button>
         )}
 
-        <div className={styles.contentColumn}>
-          <img src={item.src} alt={item.label} className={styles.image} decoding="async" />
-          <p className={styles.caption}>
-            {item.label} ({activeIndex + 1}/{items.length})
-          </p>
+        <div className={`${styles.contentColumn} ${isZoomed ? styles.contentColumnZoomed : ""}`}>
+          {/* Click toggles between the two levels - same gesture both ways, which is why
+              this is on the image itself rather than a separate "expand" button: zoom in
+              from the catalogue view, zoom back out from full-screen. Arrow-key/filmstrip
+              navigation underneath it doesn't change this mode either way. */}
+          <img
+            src={item.src}
+            alt={item.label}
+            className={`${styles.image} ${isZoomed ? styles.imageZoomed : ""}`}
+            decoding="async"
+            onClick={() => setIsZoomed((z) => !z)}
+            title={isZoomed ? "Click to shrink" : "Click to view full-size"}
+          />
 
-          {items.length > 1 && (
-            <div className={styles.thumbnailStrip} role="listbox" aria-label="All images">
-              {items.map((thumbItem, index) => (
-                <button
-                  key={thumbItem.id}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  className={`${styles.thumbnail} ${index === activeIndex ? styles.thumbnailActive : ""}`}
-                  onClick={() => onNavigate(index)}
-                >
-                  <img src={thumbItem.thumbnailSrc} alt={thumbItem.label} className={styles.thumbnailImg} loading="lazy" decoding="async" />
-                </button>
-              ))}
-            </div>
+          {!isZoomed && (
+            <>
+              <p className={styles.caption}>
+                {item.label} ({activeIndex + 1}/{items.length})
+              </p>
+
+              {items.length > 1 && (
+                <div className={styles.thumbnailStrip} role="listbox" aria-label="All images">
+                  {items.map((thumbItem, index) => (
+                    <button
+                      key={thumbItem.id}
+                      type="button"
+                      role="option"
+                      aria-selected={index === activeIndex}
+                      className={`${styles.thumbnail} ${index === activeIndex ? styles.thumbnailActive : ""}`}
+                      onClick={() => onNavigate(index)}
+                    >
+                      <img src={thumbItem.thumbnailSrc} alt={thumbItem.label} className={styles.thumbnailImg} loading="lazy" decoding="async" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
