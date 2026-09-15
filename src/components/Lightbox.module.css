@@ -48,7 +48,6 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -123,7 +122,15 @@
   .navButton {
     width: 36px;
     height: 36px;
-    font-size: 20px;
+  }
+
+  /* The chevron icons take a fixed pixel `size` prop (see icons.tsx) rather than
+     scaling with their container, so shrinking them at this breakpoint needs an
+     explicit override here - this wins over the SVG's own width/height attributes,
+     which CSS treats as the lowest-priority presentational styling. */
+  .navButton svg {
+    width: 18px;
+    height: 18px;
   }
 
   .viewerRow {

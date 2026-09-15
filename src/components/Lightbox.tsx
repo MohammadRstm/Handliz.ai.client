@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import styles from "./Lightbox.module.css";
 
 export interface LightboxItem {
@@ -52,7 +53,7 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
             onClick={() => onNavigate((activeIndex - 1 + items.length) % items.length)}
             aria-label="Previous"
           >
-            ‹
+            <ChevronLeftIcon />
           </button>
         )}
 
@@ -87,7 +88,7 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
             onClick={() => onNavigate((activeIndex + 1) % items.length)}
             aria-label="Next"
           >
-            ›
+            <ChevronRightIcon />
           </button>
         )}
       </div>

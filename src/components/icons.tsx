@@ -79,3 +79,27 @@ export function CheckIcon({ size = 14 }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * A bare leftward chevron - the Lightbox's "previous image" trigger. Drawn rather than
+ * the "‹" character it replaced: that glyph's ink sits noticeably off-center within its
+ * own font metrics (its line-box, not the visible mark, is what flexbox centering actually
+ * aligns), so the button looked centered by CSS but not to the eye. An SVG's viewBox has
+ * no such built-in asymmetry - centering the box centers the mark.
+ */
+export function ChevronLeftIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M12 4L7 10L12 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A bare rightward chevron - the Lightbox's "next image" trigger. See ChevronLeftIcon. */
+export function ChevronRightIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M8 4L13 10L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

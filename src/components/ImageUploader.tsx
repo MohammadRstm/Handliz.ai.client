@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Lightbox, type LightboxItem } from "./Lightbox";
 import styles from "./ImageUploader.module.css";
 
 interface ImageUploaderProps {
@@ -23,6 +24,7 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
  */
 export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Object URLs are an external-resource concern, not derived UI state: compute them
@@ -32,6 +34,23 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
   useEffect(() => {
     return () => previewUrls.forEach((url) => URL.revokeObjectURL(url));
   }, [previewUrls]);
+
+  // Keeps the full-screen preview in range (or closes it) if files are removed out from
+  // under it - via its own ✕ button while open, or a fresh drop/selection replacing the
+  // list entirely - rather than pointing at a now-missing or wrong index.
+  useEffect(() => {
+    if (previewIndex === null) return;
+    if (files.length === 0) setPreviewIndex(null);
+    else if (previewIndex >= files.length) setPreviewIndex(files.length - 1);
+  }, [files.length, previewIndex]);
+
+  // No server-generated thumbnail exists yet for a file still sitting in the browser
+  // before upload, unlike the chat grid's Lightbox usage - the same local object URL
+  // serves as both the full view and the filmstrip thumbnail.
+  const lightboxItems: LightboxItem[] = useMemo(
+    () => previewUrls.map((url, index) => ({ id: url, src: url, thumbnailSrc: url, label: `Reference photo ${index + 1}` })),
+    [previewUrls],
+  );
 
   const addFiles = useCallback(
     (incoming: FileList | File[]) => {
@@ -61,11 +80,21 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
     <div className={styles.wrapper}>
       {previewUrls.map((url, index) => (
         <div key={url} className={styles.previewItem}>
-          <img src={url} alt={`Reference ${index + 1}`} className={styles.previewImg} />
+          <button
+            type="button"
+            className={styles.previewButton}
+            onClick={() => setPreviewIndex(index)}
+            aria-label={`View reference photo ${index + 1} full screen`}
+          >
+            <img src={url} alt={`Reference ${index + 1}`} className={styles.previewImg} />
+          </button>
           <button
             type="button"
             className={styles.removeButton}
-            onClick={() => removeAt(index)}
+            onClick={(e) => {
+              e.stopPropagation();
+              removeAt(index);
+            }}
             disabled={disabled}
             aria-label={`Remove reference photo ${index + 1}`}
           >
@@ -105,6 +134,15 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
         </p>
         {!atLimit && <p className={styles.hintSmall}>JPEG, PNG, or WebP · up to {maxFiles} photos</p>}
       </div>
+
+      {previewIndex !== null && (
+        <Lightbox
+          items={lightboxItems}
+          activeIndex={previewIndex}
+          onNavigate={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
+      )}
     </div>
   );
 }
