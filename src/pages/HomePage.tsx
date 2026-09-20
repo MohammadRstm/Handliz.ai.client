@@ -32,6 +32,17 @@ export function HomePage() {
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<Error | null>(null);
 
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<Error | null>(null);
+  // The chat most recently deleted, kept only so it can be offered back. Deletion is soft
+  // server-side, so this is a convenience rather than the only way back - losing it (by
+  // navigating away) costs nothing permanent.
+  const [undoable, setUndoable] = useState<{ id: string; label: string } | null>(null);
+  // Bumped to force the list effect to re-run after a delete or restore, rather than
+  // patching `chats` locally: the server owns totalCount, page contents and the 30-chat
+  // cap, so after a mutation only a refetch can be trusted to agree with it.
+  const [listVersion, setListVersion] = useState(0);
+
   // Models load once; the chat page reloads on its own whenever `page` changes, so it's
   // kept out of the same Promise.all as the one-time models fetch below.
   useEffect(() => {
@@ -59,9 +70,38 @@ export function HomePage() {
         if (!controller.signal.aborted) setLoadError(toError(err));
       });
     return () => controller.abort();
-  }, [accessToken, page]);
+  }, [accessToken, page, listVersion]);
 
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  const handleDelete = async (chat: ChatSummaryDto) => {
+    if (!accessToken || deletingChatId) return;
+    setDeletingChatId(chat.id);
+    setDeleteError(null);
+    try {
+      await chatsApi.deleteChat(chat.id, accessToken);
+      setUndoable({ id: chat.id, label: chat.title ?? chat.location });
+      setListVersion((v) => v + 1);
+    } catch (err) {
+      setDeleteError(toError(err));
+    } finally {
+      setDeletingChatId(null);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!accessToken || !undoable) return;
+    const target = undoable;
+    setUndoable(null);
+    setDeleteError(null);
+    try {
+      await chatsApi.restoreChat(target.id, accessToken);
+      setListVersion((v) => v + 1);
+    } catch (err) {
+      setDeleteError(toError(err));
+      setUndoable(target); // restore failed - keep the offer available to retry
+    }
+  };
 
   // Deleting every chat on the last page (or a page emptying out from the 30-chat cap
   // evicting one elsewhere) can leave `page` past the end once totalCount shrinks - pull
@@ -108,10 +148,35 @@ export function HomePage() {
 
         {catalog && (
           <>
+            {undoable && (
+              <div className={styles.undoBar}>
+                <span>Deleted "{undoable.label}".</span>
+                <button type="button" className={styles.undoButton} onClick={() => void handleUndo()}>
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  className={styles.undoDismiss}
+                  onClick={() => setUndoable(null)}
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {deleteError && <ErrorBanner error={deleteError} onDismiss={() => setDeleteError(null)} />}
+
             {chats && chats.length > 0 && (
               <div className={styles.grid}>
                 {chats.map((chat) => (
-                  <ChatCard key={chat.id} chat={chat} onClick={() => navigate(`/chats/${chat.id}`)} />
+                  <ChatCard
+                    key={chat.id}
+                    chat={chat}
+                    onClick={() => navigate(`/chats/${chat.id}`)}
+                    onDelete={() => void handleDelete(chat)}
+                    isDeleting={deletingChatId === chat.id}
+                  />
                 ))}
               </div>
             )}

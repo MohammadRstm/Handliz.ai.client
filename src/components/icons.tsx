@@ -71,6 +71,21 @@ export function AttachIcon({ size = 18 }: IconProps) {
   );
 }
 
+/** A trash can - the "delete this chat" trigger on a history card. */
+export function TrashIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 4h11M6.5 4V2.8h3V4M4 4l.7 9.2h6.6L12 4M6.6 6.6v4M9.4 6.6v4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** A bare checkmark - the manual image-selection indicator. */
 export function CheckIcon({ size = 14 }: IconProps) {
   return (

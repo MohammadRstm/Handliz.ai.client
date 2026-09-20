@@ -12,6 +12,7 @@ import type {
   RefineImageResponse,
   StartChatParams,
   StartChatResponse,
+  SuccessResponse,
   UploadReferenceImageResponse,
 } from "./chatTypes";
 
@@ -114,6 +115,20 @@ export function editImages(
   signal?: AbortSignal,
 ): Promise<EditImagesResponse> {
   return apiPostJson<EditImagesResponse>(`${BASE_PATH}/${chatId}/edit`, params, { accessToken, signal });
+}
+
+/**
+ * Removes a whole chat from the history list. Soft server-side: the chat and its images
+ * survive for a retention window (30 days) and can be put back with restoreChat, because
+ * deleting takes every generated image in the chat with it.
+ */
+export function deleteChat(chatId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
+  return apiDeleteJson<SuccessResponse>(`${BASE_PATH}/${chatId}`, {}, { accessToken, signal });
+}
+
+/** Undoes deleteChat while the chat is still inside its retention window. */
+export function restoreChat(chatId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
+  return apiPostJson<SuccessResponse>(`${BASE_PATH}/${chatId}/restore`, {}, { accessToken, signal });
 }
 
 /** Permanently removes the given images (generated and/or uploaded/source) from a chat. Unknown ids/indices are ignored. */

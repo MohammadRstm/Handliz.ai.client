@@ -184,3 +184,8 @@ export interface StartChatParams {
   modelKey?: string;
   imageSize?: string;
 }
+
+/** Response for actions whose only outcome is "it worked" - chat delete/restore. */
+export interface SuccessResponse {
+  success: true;
+}
