@@ -21,7 +21,7 @@ const UsageContext = createContext<UsageContextValue | undefined>(undefined);
 /**
  * One shared usage snapshot for the whole app (mounted once in App.tsx, alongside
  * AuthProvider), rather than each page fetching its own copy - so a refresh() called from
- * deep inside ChatPage (after a successful generation) is immediately visible to the
+ * deep inside ProjectPage (after a successful generation) is immediately visible to the
  * HomePage's account menu too, without any prop drilling between them.
  */
 export function UsageProvider({ children }: { children: React.ReactNode }) {

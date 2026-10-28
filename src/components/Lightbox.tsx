@@ -25,7 +25,7 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
   // and filmstrip visible below it) and, one click on the image further in, a true
   // full-screen view with those trimmed away so the image itself gets the space. Local
   // state rather than something the caller tracks - it's purely a display mode of this
-  // component, and resets for free every time the Lightbox unmounts (ChatPage/
+  // component, and resets for free every time the Lightbox unmounts (ProjectPage/
   // ImageUploader both render it conditionally on activeIndex, so closing and reopening
   // always starts back at the catalogue level, never stuck zoomed in from a prior image).
   const [isZoomed, setIsZoomed] = useState(false);

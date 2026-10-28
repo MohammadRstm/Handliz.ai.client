@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import * as chatsApi from "../api/chatsApi";
+import * as projectsApi from "../api/projectsApi";
 import { ApiError, imageUrl } from "../api/client";
 import type {
-  ChatDetailResponse,
+  ProjectDetailResponse,
   GeneratedImageDto,
   ImageModelsResponse,
   TimeOfDay,
   UploadedReferenceImageDto,
   WeatherCondition,
-} from "../api/chatTypes";
+} from "../api/projectTypes";
 import { useAuth } from "../auth/useAuth";
 import { AccountMenu } from "../components/AccountMenu";
 import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPicker";
-import { ChatImageTile } from "../components/ChatImageTile";
+import { ProjectImageTile } from "../components/ProjectImageTile";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
@@ -23,19 +23,19 @@ import { Spinner } from "../components/Spinner";
 import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import { UsageRing } from "../usage/UsageRing";
 import { useUsage } from "../usage/useUsage";
-import styles from "./ChatPage.module.css";
+import styles from "./ProjectPage.module.css";
 
 function toError(err: unknown): ApiError | Error {
   if (err instanceof ApiError || err instanceof Error) return err;
   return new Error("Something went wrong.");
 }
 
-export function ChatPage() {
-  const { chatId } = useParams<{ chatId: string }>();
+export function ProjectPage() {
+  const { projectId } = useParams<{ projectId: string }>();
   const { accessToken } = useAuth();
   const { refresh: refreshUsage } = useUsage();
 
-  const [chat, setChat] = useState<ChatDetailResponse | null>(null);
+  const [project, setProject] = useState<ProjectDetailResponse | null>(null);
   const [catalog, setCatalog] = useState<ImageModelsResponse | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
@@ -44,8 +44,8 @@ export function ChatPage() {
   const [generatingIndices, setGeneratingIndices] = useState<Set<number>>(new Set());
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
 
-  // The images the chat originally started with never carry the "Added" badge - only
-  // images uploaded later, in-chat, do (Chunk 5). Captured once, at load.
+  // The images the project originally started with never carry the "Added" badge - only
+  // images uploaded later, in-project, do (Chunk 5). Captured once, at load.
   const originalReferenceCount = useRef<number | null>(null);
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -62,17 +62,17 @@ export function ChatPage() {
   const [editError, setEditError] = useState<Error | null>(null);
 
   // Loading feedback while an edit is in flight: the Gemini-only branch refines specific
-  // existing tiles in place (their ids tracked here so ChatImageTile can overlay a
+  // existing tiles in place (their ids tracked here so ProjectImageTile can overlay a
   // spinner on top of the still-visible image), while the GPT branch produces brand-new
   // images with no ids yet - pendingNewImageCount reserves that many loading placeholder
   // tiles until the real ones arrive. Exactly one of the two is ever non-empty per request.
   const [refiningImageIds, setRefiningImageIds] = useState<Set<string>>(new Set());
   const [pendingNewImageCount, setPendingNewImageCount] = useState(0);
 
-  // In-chat editable generation parameters (Chunk 9) - seeded from the chat's current
+  // In-project editable generation parameters (Chunk 9) - seeded from the project's current
   // values once it loads, then editable via the settings dropdown. Sent with every edit
   // request; the backend both applies them to that request and persists them as the
-  // chat's new current values for subsequent ones.
+  // project's new current values for subsequent ones.
   const [editTimeOfDay, setEditTimeOfDay] = useState<TimeOfDay>("GoldenHour");
   const [editWeather, setEditWeather] = useState<WeatherCondition>("Clear");
   const [editLocation, setEditLocation] = useState("");
@@ -88,12 +88,12 @@ export function ChatPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<Error | null>(null);
 
-  const imagesKickedOffForChatId = useRef<string | null>(null);
-  const promptKickedOffForChatId = useRef<string | null>(null);
-  const titleKickedOffForChatId = useRef<string | null>(null);
+  const imagesKickedOffForProjectId = useRef<string | null>(null);
+  const promptKickedOffForProjectId = useRef<string | null>(null);
+  const titleKickedOffForProjectId = useRef<string | null>(null);
 
   const generateIndex = useCallback(
-    (targetChatId: string, index: number) => {
+    (targetProjectId: string, index: number) => {
       if (!accessToken) return;
       setFailedIndices((prev) => {
         const next = new Set(prev);
@@ -102,8 +102,8 @@ export function ChatPage() {
       });
       setGeneratingIndices((prev) => new Set(prev).add(index));
 
-      chatsApi
-        .generateChatImage(targetChatId, index, accessToken)
+      projectsApi
+        .generateProjectImage(targetProjectId, index, accessToken)
         .then((dto) => {
           setImages((prev) => [...prev.filter((img) => img.index !== index), dto].sort((a, b) => a.index - b.index));
           // Only on success: a failed call releases its credit hold rather than spending
@@ -126,35 +126,35 @@ export function ChatPage() {
   );
 
   const kickOffMissingImages = useCallback(
-    (targetChatId: string, requestedImageCount: number, presentIndices: Set<number>) => {
-      if (imagesKickedOffForChatId.current === targetChatId) return;
-      imagesKickedOffForChatId.current = targetChatId;
+    (targetProjectId: string, requestedImageCount: number, presentIndices: Set<number>) => {
+      if (imagesKickedOffForProjectId.current === targetProjectId) return;
+      imagesKickedOffForProjectId.current = targetProjectId;
       for (let i = 0; i < requestedImageCount; i++) {
         if (!presentIndices.has(i)) {
-          generateIndex(targetChatId, i);
+          generateIndex(targetProjectId, i);
         }
       }
     },
     [generateIndex],
   );
 
-  // Load the chat, then:
+  // Load the project, then:
   //  - if it has no title yet, fetch one (fast, text-only) - independent of everything
   //    else, so it typically appears well before the images do.
   //  - if it has no prompt yet, fetch one (Stage 1, slower - analyzes the reference
   //    photos) and only THEN kick off image generation for missing slots, since Gemini
-  //    needs that prompt. If the prompt is already present (a chat opened before, or
+  //    needs that prompt. If the prompt is already present (a project opened before, or
   //    reopened after a previous attempt), skip straight to image generation.
   // Each step is guarded by its own ref so React StrictMode's double-invoke (or a
-  // re-render) never fires the same chat's title/prompt/images more than once.
+  // re-render) never fires the same project's title/prompt/images more than once.
   useEffect(() => {
-    if (!chatId || !accessToken) return;
+    if (!projectId || !accessToken) return;
     let cancelled = false;
 
-    Promise.all([chatsApi.getChat(chatId, accessToken), chatsApi.getImageModels(accessToken)])
+    Promise.all([projectsApi.getProject(projectId, accessToken), projectsApi.getImageModels(accessToken)])
       .then(([response, models]) => {
         if (cancelled) return;
-        setChat(response);
+        setProject(response);
         setCatalog(models);
         setImages(response.images);
         setUploadedImages(response.referenceImages);
@@ -168,13 +168,13 @@ export function ChatPage() {
         setEditModelKey(response.model.key);
         setEditImageSize(response.imageSize);
 
-        if (!response.title && titleKickedOffForChatId.current !== chatId) {
-          titleKickedOffForChatId.current = chatId;
-          chatsApi
-            .generateChatTitle(chatId, accessToken)
+        if (!response.title && titleKickedOffForProjectId.current !== projectId) {
+          titleKickedOffForProjectId.current = projectId;
+          projectsApi
+            .generateProjectTitle(projectId, accessToken)
             .then((titleResponse) => {
               if (cancelled) return;
-              setChat((prev) => (prev ? { ...prev, title: titleResponse.title } : prev));
+              setProject((prev) => (prev ? { ...prev, title: titleResponse.title } : prev));
             })
             .catch(() => {
               // Non-critical: the location keeps serving as the displayed title.
@@ -184,19 +184,19 @@ export function ChatPage() {
         const presentIndices = new Set(response.images.map((img) => img.index));
 
         if (response.generatedPrompt) {
-          kickOffMissingImages(chatId, response.requestedImageCount, presentIndices);
+          kickOffMissingImages(projectId, response.requestedImageCount, presentIndices);
           return;
         }
 
-        if (promptKickedOffForChatId.current === chatId) return;
-        promptKickedOffForChatId.current = chatId;
+        if (promptKickedOffForProjectId.current === projectId) return;
+        promptKickedOffForProjectId.current = projectId;
 
-        chatsApi
-          .generateChatPrompt(chatId, accessToken)
+        projectsApi
+          .generateProjectPrompt(projectId, accessToken)
           .then((promptResponse) => {
             if (cancelled) return;
-            setChat((prev) => (prev ? { ...prev, generatedPrompt: promptResponse.generatedPrompt } : prev));
-            kickOffMissingImages(chatId, response.requestedImageCount, presentIndices);
+            setProject((prev) => (prev ? { ...prev, generatedPrompt: promptResponse.generatedPrompt } : prev));
+            kickOffMissingImages(projectId, response.requestedImageCount, presentIndices);
           })
           .catch((err) => {
             if (!cancelled) setLoadError(toError(err));
@@ -210,7 +210,7 @@ export function ChatPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, accessToken]);
+  }, [projectId, accessToken]);
 
   const lightboxItems: LightboxItem[] = useMemo(() => {
     const generatedItems: LightboxItem[] = images
@@ -240,18 +240,18 @@ export function ChatPage() {
   };
 
   const handleDeleteSelected = useCallback(async () => {
-    if (!chatId || !accessToken || isDeleting || isEditing) return;
+    if (!projectId || !accessToken || isDeleting || isEditing) return;
     if (selectedGeneratedIds.size === 0 && selectedReferenceIndices.size === 0) return;
 
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      await chatsApi.deleteChatImages(chatId, Array.from(selectedGeneratedIds), Array.from(selectedReferenceIndices), accessToken);
+      await projectsApi.deleteProjectImages(projectId, Array.from(selectedGeneratedIds), Array.from(selectedReferenceIndices), accessToken);
       // Re-fetch rather than patch local state: deleting a generated image re-numbers
-      // every remaining one server-side to close the gap (see DeleteChatImagesAsync), so
+      // every remaining one server-side to close the gap (see DeleteProjectImagesAsync), so
       // a simple local filter would leave stale indices that no longer match the server.
-      const refreshed = await chatsApi.getChat(chatId, accessToken);
-      setChat(refreshed);
+      const refreshed = await projectsApi.getProject(projectId, accessToken);
+      setProject(refreshed);
       setImages(refreshed.images);
       setUploadedImages(refreshed.referenceImages);
       setSelectedGeneratedIds(new Set());
@@ -261,7 +261,7 @@ export function ChatPage() {
     } finally {
       setIsDeleting(false);
     }
-  }, [chatId, accessToken, isDeleting, isEditing, selectedGeneratedIds, selectedReferenceIndices]);
+  }, [projectId, accessToken, isDeleting, isEditing, selectedGeneratedIds, selectedReferenceIndices]);
 
   // Backspace (and, defensively, Delete) previously risked triggering a browser's native
   // "navigate back" behavior when focus isn't in a text field - unmounting this page and
@@ -319,12 +319,12 @@ export function ChatPage() {
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = ""; // allow re-selecting the same file later
-    if (!file || !chatId || !accessToken || isDeleting) return;
+    if (!file || !projectId || !accessToken || isDeleting) return;
 
     setIsUploadingImage(true);
     setUploadError(null);
     try {
-      const response = await chatsApi.uploadReferenceImage(chatId, file, accessToken);
+      const response = await projectsApi.uploadReferenceImage(projectId, file, accessToken);
       setUploadedImages((prev) => [...prev, response.referenceImage]);
     } catch (err) {
       setUploadError(toError(err));
@@ -334,29 +334,29 @@ export function ChatPage() {
   };
 
   const hasSelection = selectedGeneratedIds.size > 0 || selectedReferenceIndices.size > 0;
-  // Mirrors the backend's own branch decision (EditChatImagesAsync): any uploaded/source
+  // Mirrors the backend's own branch decision (EditProjectImagesAsync): any uploaded/source
   // image in the selection re-invokes the full GPT -> Gemini pipeline, which is a
   // meaningful action on its own - free text is only required for the Gemini-only refine
   // branch, which has no other action to take.
   const willUseGpt = selectedReferenceIndices.size > 0;
-  // A parameter actually differing from the chat's current persisted value is itself a
+  // A parameter actually differing from the project's current persisted value is itself a
   // request to update the photo, same as typing a change would be - mirrors the backend's
-  // own hasParamChanges check in EditChatImagesAsync. ImageCount is deliberately excluded:
+  // own hasParamChanges check in EditProjectImagesAsync. ImageCount is deliberately excluded:
   // it only governs how many brand-new images the GPT branch produces, so changing it has
   // no effect on a Gemini-only refine and shouldn't unlock submitting with no instruction.
-  const hasParamChanges = chat
-    ? editTimeOfDay !== chat.timeOfDay ||
-      editWeather !== chat.weather ||
-      editLocation.trim() !== chat.location ||
-      editAspectRatio !== chat.aspectRatio ||
-      editModelKey !== chat.model.key ||
-      editImageSize !== chat.imageSize
+  const hasParamChanges = project
+    ? editTimeOfDay !== project.timeOfDay ||
+      editWeather !== project.weather ||
+      editLocation.trim() !== project.location ||
+      editAspectRatio !== project.aspectRatio ||
+      editModelKey !== project.model.key ||
+      editImageSize !== project.imageSize
     : false;
   const canSubmit = instruction.trim().length > 0 || willUseGpt || hasParamChanges;
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!chatId || !accessToken || !canSubmit || isEditing || isDeleting) return;
+    if (!projectId || !accessToken || !canSubmit || isEditing || isDeleting) return;
 
     setIsEditing(true);
     setEditError(null);
@@ -367,8 +367,8 @@ export function ChatPage() {
       setRefiningImageIds(targetIds);
     }
     try {
-      const response = await chatsApi.editImages(
-        chatId,
+      const response = await projectsApi.editImages(
+        projectId,
         {
           instruction: instruction.trim(),
           selectedGeneratedImageIds: Array.from(selectedGeneratedIds),
@@ -392,7 +392,7 @@ export function ChatPage() {
         );
       }
       const selectedModel = catalog?.models.find((m) => m.key === editModelKey);
-      setChat((prev) =>
+      setProject((prev) =>
         prev
           ? {
               ...prev,
@@ -428,17 +428,17 @@ export function ChatPage() {
         <div className={styles.errorWrap}>
           <ErrorBanner error={loadError} />
           <Link to="/" className={styles.backLink}>
-            ← Back to chats
+            ← Back to projects
           </Link>
         </div>
       </div>
     );
   }
 
-  if (!chat || !catalog) {
+  if (!project || !catalog) {
     return (
       <div className={styles.loadingPage}>
-        <Spinner label="Loading chat..." />
+        <Spinner label="Loading project..." />
       </div>
     );
   }
@@ -447,7 +447,7 @@ export function ChatPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerTopRow}>
-          <Link to="/" className={styles.backIconLink} aria-label="Back to chats" title="Back to chats">
+          <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
             <BackArrowIcon />
           </Link>
           <div className={styles.headerActions}>
@@ -456,18 +456,18 @@ export function ChatPage() {
           </div>
         </div>
         <h1 className={styles.title}>
-          {chat.title ?? chat.location}
-          {!chat.title && <span className={styles.titleLoading} aria-label="Generating title" />}
+          {project.title ?? project.location}
+          {!project.title && <span className={styles.titleLoading} aria-label="Generating title" />}
         </h1>
         <div className={styles.summary}>
-          {chat.model.displayName} · {chat.imageSize} · {chat.aspectRatio} · {chat.timeOfDay} · {chat.weather}
+          {project.model.displayName} · {project.imageSize} · {project.aspectRatio} · {project.timeOfDay} · {project.weather}
         </div>
       </header>
 
       <main className={styles.main}>
         <div className={styles.grid}>
           {uploadedImages.map((ref) => (
-            <ChatImageTile
+            <ProjectImageTile
               key={`reference-${ref.index}`}
               status="loaded"
               src={imageUrl(ref.thumbnailUrl)}
@@ -479,11 +479,11 @@ export function ChatPage() {
             />
           ))}
 
-          {Array.from({ length: chat.requestedImageCount }, (_, index) => {
+          {Array.from({ length: project.requestedImageCount }, (_, index) => {
             const image = images.find((img) => img.index === index);
             if (image) {
               return (
-                <ChatImageTile
+                <ProjectImageTile
                   key={`generated-${index}`}
                   status="loaded"
                   src={imageUrl(image.thumbnailUrl)}
@@ -497,19 +497,19 @@ export function ChatPage() {
             }
             if (failedIndices.has(index)) {
               return (
-                <ChatImageTile
+                <ProjectImageTile
                   key={`generated-${index}`}
                   status="failed"
                   label={`Image ${index + 1}`}
-                  onRetry={() => chatId && generateIndex(chatId, index)}
+                  onRetry={() => projectId && generateIndex(projectId, index)}
                 />
               );
             }
-            return <ChatImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
+            return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
           })}
 
           {Array.from({ length: pendingNewImageCount }, (_, i) => (
-            <ChatImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
+            <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
           ))}
         </div>
 
@@ -529,8 +529,8 @@ export function ChatPage() {
                 className={styles.attachButton}
                 onClick={handleAttachClick}
                 disabled={isUploadingImage || isEditing || isDeleting}
-                aria-label="Add another photo to this chat"
-                title="Add another photo to this chat"
+                aria-label="Add another photo to this project"
+                title="Add another photo to this project"
               >
                 {isUploadingImage ? <Spinner /> : <AttachIcon />}
               </button>

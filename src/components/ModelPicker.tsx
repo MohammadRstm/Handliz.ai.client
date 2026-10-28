@@ -1,4 +1,4 @@
-import type { ImageModelDto } from "../api/chatTypes";
+import type { ImageModelDto } from "../api/projectTypes";
 import styles from "./ModelPicker.module.css";
 
 interface ModelPickerProps {

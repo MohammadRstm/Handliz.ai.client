@@ -1,4 +1,4 @@
-import type { TimeOfDay, WeatherCondition } from "./api/chatTypes";
+import type { TimeOfDay, WeatherCondition } from "./api/projectTypes";
 
 // Mirrors Handliz.ai/Domain/TimeOfDay.cs and WeatherCondition.cs exactly. These enums are
 // small and change rarely, so they're kept in sync here rather than fetched from the API.

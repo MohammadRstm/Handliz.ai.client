@@ -1,12 +1,12 @@
 import { useState } from "react";
-import type { ChatSummaryDto } from "../api/chatTypes";
+import type { ProjectSummaryDto } from "../api/projectTypes";
 import { imageUrl } from "../api/client";
 import { TrashIcon } from "./icons";
 import { Spinner } from "./Spinner";
-import styles from "./ChatCard.module.css";
+import styles from "./ProjectCard.module.css";
 
-interface ChatCardProps {
-  chat: ChatSummaryDto;
+interface ProjectCardProps {
+  project: ProjectSummaryDto;
   onClick: () => void;
   onDelete: () => void;
   isDeleting?: boolean;
@@ -20,13 +20,13 @@ function formatLastUsed(iso: string): string {
   });
 }
 
-export function ChatCard({ chat, onClick, onDelete, isDeleting }: ChatCardProps) {
+export function ProjectCard({ project, onClick, onDelete, isDeleting }: ProjectCardProps) {
   const [isHovering, setIsHovering] = useState(false);
-  const label = chat.title ?? chat.location;
+  const label = project.title ?? project.location;
 
   // The card used to be one big <button>. It is now a div wrapping a button, because the
   // delete control has to be a real button too and nesting one inside another is invalid
-  // HTML that browsers resolve unpredictably. Same structure ChatImageTile already uses
+  // HTML that browsers resolve unpredictably. Same structure ProjectImageTile already uses
   // for its own overlay controls.
   return (
     <div
@@ -35,9 +35,9 @@ export function ChatCard({ chat, onClick, onDelete, isDeleting }: ChatCardProps)
       onMouseLeave={() => setIsHovering(false)}
     >
       <button type="button" className={styles.cardButton} onClick={onClick}>
-        {chat.thumbnailUrl ? (
+        {project.thumbnailUrl ? (
           <img
-            src={imageUrl(chat.thumbnailUrl)}
+            src={imageUrl(project.thumbnailUrl)}
             alt={label}
             className={styles.thumbnail}
             loading="lazy"
@@ -49,7 +49,7 @@ export function ChatCard({ chat, onClick, onDelete, isDeleting }: ChatCardProps)
 
         <div className={styles.footer}>
           <span className={styles.location}>{label}</span>
-          <span className={styles.count}>{chat.requestedImageCount} img</span>
+          <span className={styles.count}>{project.requestedImageCount} img</span>
         </div>
       </button>
 
@@ -65,12 +65,12 @@ export function ChatCard({ chat, onClick, onDelete, isDeleting }: ChatCardProps)
         }}
         disabled={isDeleting}
         aria-label={`Delete ${label}`}
-        title="Delete this chat"
+        title="Delete this project"
       >
         {isDeleting ? <Spinner /> : <TrashIcon size={14} />}
       </button>
 
-      {isHovering && <div className={styles.hoverDate}>Last used {formatLastUsed(chat.lastUsedAtUtc)}</div>}
+      {isHovering && <div className={styles.hoverDate}>Last used {formatLastUsed(project.lastUsedAtUtc)}</div>}
     </div>
   );
 }

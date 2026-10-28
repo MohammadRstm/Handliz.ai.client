@@ -1,4 +1,4 @@
-// Generic API envelope types shared by every endpoint (chats, auth, etc.) - not specific
+// Generic API envelope types shared by every endpoint (projects, auth, etc.) - not specific
 // to any one feature's DTOs.
 
 export interface ApiErrorDetail {

@@ -45,7 +45,7 @@ export function ImageUploader({ files, onChange, maxFiles, disabled }: ImageUplo
   }, [files.length, previewIndex]);
 
   // No server-generated thumbnail exists yet for a file still sitting in the browser
-  // before upload, unlike the chat grid's Lightbox usage - the same local object URL
+  // before upload, unlike the project grid's Lightbox usage - the same local object URL
   // serves as both the full view and the filmstrip thumbnail.
   const lightboxItems: LightboxItem[] = useMemo(
     () => previewUrls.map((url, index) => ({ id: url, src: url, thumbnailSrc: url, label: `Reference photo ${index + 1}` })),

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ImageModelsResponse, StartChatParams, TimeOfDay, WeatherCondition } from "../api/chatTypes";
+import type { ImageModelsResponse, CreateProjectParams, TimeOfDay, WeatherCondition } from "../api/projectTypes";
 import { DEFAULT_LOCATION, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import { AspectRatioPicker } from "./AspectRatioPicker";
 import { Dropdown } from "./Dropdown";
@@ -7,20 +7,20 @@ import { ChevronUpDownIcon, HamburgerIcon, SendArrowIcon } from "./icons";
 import { ImageUploader } from "./ImageUploader";
 import { ModelPicker } from "./ModelPicker";
 import { Spinner } from "./Spinner";
-import styles from "./ChatComposer.module.css";
+import styles from "./ProjectComposer.module.css";
 
-interface ChatComposerProps {
+interface ProjectComposerProps {
   catalog: ImageModelsResponse;
-  onSubmit: (params: StartChatParams) => void;
+  onSubmit: (params: CreateProjectParams) => void;
   isSubmitting: boolean;
 }
 
 /**
- * The home page's "start a new chat" input: a photo uploader, a single text field for the
+ * The home page's "start a new project" input: a photo uploader, a single text field for the
  * location/scene, and two dropdowns (model, settings) next to the send button - submitting
- * immediately (without ever opening an existing chat card) starts a brand new chat.
+ * immediately (without ever opening an existing project card) starts a brand new project.
  */
-export function ChatComposer({ catalog, onSubmit, isSubmitting }: ChatComposerProps) {
+export function ProjectComposer({ catalog, onSubmit, isSubmitting }: ProjectComposerProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [location, setLocation] = useState("");
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>("GoldenHour");

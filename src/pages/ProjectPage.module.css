@@ -190,7 +190,7 @@
   height: 16px;
 }
 
-/* Icon-only "add a photo to this chat" trigger, left of the input row (Chunk 5) - the
+/* Icon-only "add a photo to this project" trigger, left of the input row (Chunk 5) - the
    compact counterpart to the main page's large drag-and-drop dropzone. */
 .attachButton {
   flex-shrink: 0;

@@ -9,7 +9,7 @@ const RADIUS = 8;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /**
- * The small ring + "N left" pill (model chip's neighbor in the chat header, or a standalone
+ * The small ring + "N left" pill (model chip's neighbor in the project header, or a standalone
  * pill in the home header) - clicking it opens the full trial/daily/weekly breakdown. Reads
  * from UsageContext rather than fetching its own copy, so it always reflects the same
  * snapshot a just-completed generation elsewhere just refreshed.

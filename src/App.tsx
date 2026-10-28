@@ -4,7 +4,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { HomePage } from "./pages/HomePage";
-import { ChatPage } from "./pages/ChatPage";
+import { ProjectPage } from "./pages/ProjectPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BillingPage } from "./pages/BillingPage";
 import { UsageProvider } from "./usage/UsageContext";
@@ -14,7 +14,7 @@ function App() {
     <AuthProvider>
       {/* Inside AuthProvider (usage fetches need accessToken) but outside BrowserRouter -
           one usage snapshot shared across every route, so a refresh() fired from deep
-          inside ChatPage after a successful generation is immediately visible on the
+          inside ProjectPage after a successful generation is immediately visible on the
           Billing page or the Home header too, without prop drilling between them. */}
       <UsageProvider>
         <BrowserRouter>
@@ -30,10 +30,10 @@ function App() {
               }
             />
             <Route
-              path="/chats/:chatId"
+              path="/projects/:projectId"
               element={
                 <ProtectedRoute>
-                  <ChatPage />
+                  <ProjectPage />
                 </ProtectedRoute>
               }
             />

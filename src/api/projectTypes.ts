@@ -40,7 +40,7 @@ export interface ImageModelSummaryDto {
   displayName: string;
 }
 
-export interface ChatSummaryDto {
+export interface ProjectSummaryDto {
   id: string;
   location: string;
   /** Null until GPT produces one - fall back to location for display until then. */
@@ -48,17 +48,17 @@ export interface ChatSummaryDto {
   lastUsedAtUtc: string;
   requestedImageCount: number;
   /**
-   * API-relative, signed URL for a small preview, or null when the chat has no image yet.
+   * API-relative, signed URL for a small preview, or null when the project has no image yet.
    * Prepend API_BASE_URL to use it. Image bytes are no longer inlined in JSON: this
-   * response was 8 MB for four chats when they were.
+   * response was 8 MB for four projects when they were.
    */
   thumbnailUrl: string | null;
 }
 
-export interface ChatListResponse {
+export interface ProjectListResponse {
   success: true;
-  chats: ChatSummaryDto[];
-  /** This user's full chat count (not just chats.length) - derive page count from it. */
+  projects: ProjectSummaryDto[];
+  /** This user's full project count (not just projects.length) - derive page count from it. */
   totalCount: number;
   page: number;
   pageSize: number;
@@ -84,9 +84,9 @@ export interface GeneratedImageDto {
 }
 
 /** A fast, GPT-free DB write - no prompt, title, or images yet. Fetch those separately right after navigating in. */
-export interface StartChatResponse {
+export interface CreateProjectResponse {
   success: true;
-  chatId: string;
+  projectId: string;
   requestedImageCount: number;
   model: ImageModelSummaryDto;
   imageSize: string;
@@ -94,11 +94,11 @@ export interface StartChatResponse {
   warnings: string[];
 }
 
-export interface ChatDetailResponse {
+export interface ProjectDetailResponse {
   success: true;
   id: string;
   location: string;
-  /** Null until GPT produces one via generateChatTitle - fall back to location for display until then. */
+  /** Null until GPT produces one via generateProjectTitle - fall back to location for display until then. */
   title: string | null;
   timeOfDay: string;
   weather: string;
@@ -138,11 +138,11 @@ export interface UploadReferenceImageResponse {
 
 /**
  * Which pipeline branch runs is decided entirely by selectedReferenceIndices (see the
- * backend's IImagePipeline.EditChatImagesAsync): non-empty means at least one
+ * backend's IImagePipeline.EditProjectImagesAsync): non-empty means at least one
  * uploaded/source image is part of the edit, which always re-invokes GPT; otherwise
  * Gemini is called directly against selectedGeneratedImageIds, or - if that's empty too,
  * the "nothing manually selected" default - every currently generated image. A non-null
- * parameter field both applies to this request and persists as the chat's new current
+ * parameter field both applies to this request and persists as the project's new current
  * value for later ones.
  */
 export interface EditImagesParams {
@@ -159,7 +159,7 @@ export interface EditImagesParams {
   imageSize: string;
 }
 
-export interface DeleteChatImagesResponse {
+export interface DeleteProjectImagesResponse {
   success: true;
   requestedImageCount: number;
 }
@@ -174,7 +174,7 @@ export interface EditImagesResponse {
   requestedImageCount: number;
 }
 
-export interface StartChatParams {
+export interface CreateProjectParams {
   images: File[];
   timeOfDay: TimeOfDay;
   weather: WeatherCondition;
@@ -185,7 +185,7 @@ export interface StartChatParams {
   imageSize?: string;
 }
 
-/** Response for actions whose only outcome is "it worked" - chat delete/restore. */
+/** Response for actions whose only outcome is "it worked" - project delete/restore. */
 export interface SuccessResponse {
   success: true;
 }

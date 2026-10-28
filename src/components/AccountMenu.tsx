@@ -3,7 +3,7 @@ import { useAuth } from "../auth/useAuth";
 import { Dropdown } from "./Dropdown";
 import styles from "./AccountMenu.module.css";
 
-/** Account/nav dropdown (Chats / Settings / Billing / Log out) - the one place these live, used from both HomePage and ChatPage's headers. */
+/** Account/nav dropdown (Projects / Settings / Billing / Log out) - the one place these live, used from both HomePage and ProjectPage's headers. */
 export function AccountMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ export function AccountMenu() {
         </div>
         <div className={styles.divider} />
         <Link to="/" className={styles.item}>
-          Chats
+          Projects
         </Link>
         <Link to="/settings" className={styles.item}>
           Settings

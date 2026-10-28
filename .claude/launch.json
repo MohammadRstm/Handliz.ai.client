@@ -5,7 +5,13 @@
       "name": "handliz-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 5174
+    },
+    {
+      "name": "handliz-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "../Handliz.ai.api/Handliz.ai", "--launch-profile", "http"],
+      "port": 5047
     }
   ]
 }
