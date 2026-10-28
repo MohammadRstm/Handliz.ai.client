@@ -49,7 +49,7 @@ export function BillingPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link to="/" className={styles.backIconLink} aria-label="Back to chats" title="Back to chats">
+        <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
           <BackArrowIcon />
         </Link>
         <h1 className={styles.title}>Billing</h1>

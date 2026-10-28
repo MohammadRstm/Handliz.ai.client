@@ -12,7 +12,7 @@ interface DropdownProps {
   align?: "left" | "right";
   /**
    * Which side of the trigger the panel opens toward. Default "above" - the original (and
-   * still most common) use is the in-chat composer's settings menu, anchored near the
+   * still most common) use is the in-project composer's settings menu, anchored near the
    * bottom of the viewport where there's no room below it. Top-of-page triggers (account
    * menu, usage ring) want "below" instead.
    */

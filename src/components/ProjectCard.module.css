@@ -14,7 +14,7 @@
 }
 
 /* Carries what .card itself used to: the whole card minus the delete control is the
-   navigate-into-chat target. */
+   navigate-into-project target. */
 .cardButton {
   display: block;
   width: 100%;

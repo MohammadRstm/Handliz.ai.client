@@ -41,7 +41,7 @@ export function ChevronUpDownIcon({ size = 14 }: IconProps) {
   );
 }
 
-/** A bare leftward arrow - the icon-only "back to chats" trigger. */
+/** A bare leftward arrow - the icon-only "back to projects" trigger. */
 export function BackArrowIcon({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -56,7 +56,7 @@ export function BackArrowIcon({ size = 18 }: IconProps) {
   );
 }
 
-/** A paperclip - the "add another photo to this chat" trigger, left of the chat input. */
+/** A paperclip - the "add another photo to this project" trigger, left of the project input. */
 export function AttachIcon({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -71,7 +71,7 @@ export function AttachIcon({ size = 18 }: IconProps) {
   );
 }
 
-/** A trash can - the "delete this chat" trigger on a history card. */
+/** A trash can - the "delete this project" trigger on a project card. */
 export function TrashIcon({ size = 16 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">

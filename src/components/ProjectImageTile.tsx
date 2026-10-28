@@ -1,8 +1,8 @@
 import { CheckIcon } from "./icons";
 import { Spinner } from "./Spinner";
-import styles from "./ChatImageTile.module.css";
+import styles from "./ProjectImageTile.module.css";
 
-interface ChatImageTileProps {
+interface ProjectImageTileProps {
   status: "loading" | "failed" | "loaded";
   /** Already absolute - callers resolve it through imageUrl(). */
   src?: string;
@@ -10,7 +10,7 @@ interface ChatImageTileProps {
   /** Manual selection for editing (Chunk 8) - independent of the lightbox viewer, which opens on the image itself. */
   isChecked?: boolean;
   onToggleCheck?: () => void;
-  /** Shown on an uploaded image added mid-chat (Chunk 5), never on the original upload set. */
+  /** Shown on an uploaded image added mid-project (Chunk 5), never on the original upload set. */
   isNewlyAdded?: boolean;
   /** This already-loaded image is being refined in place - keep it visible but overlay a spinner rather than blanking it like status="loading" does. */
   isRefining?: boolean;
@@ -18,7 +18,7 @@ interface ChatImageTileProps {
   onRetry?: () => void;
 }
 
-export function ChatImageTile({
+export function ProjectImageTile({
   status,
   src,
   label,
@@ -28,7 +28,7 @@ export function ChatImageTile({
   isRefining,
   onClick,
   onRetry,
-}: ChatImageTileProps) {
+}: ProjectImageTileProps) {
   return (
     <div className={`${styles.tile} ${isChecked ? styles.tileSelected : ""}`}>
       {status === "loaded" && src && (
