@@ -89,6 +89,17 @@ export async function apiPostJson<T>(path: string, body: unknown, options: Reque
   return handleResponse<T>(response);
 }
 
+export async function apiPatchJson<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...authHeader(options.accessToken) },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  return handleResponse<T>(response);
+}
+
 export async function apiDeleteJson<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "DELETE",

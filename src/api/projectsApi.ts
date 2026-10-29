@@ -1,4 +1,4 @@
-import { apiDeleteJson, apiGet, apiPostForm, apiPostJson } from "./client";
+import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./client";
 import type {
   ProjectDetailResponse,
   ProjectListResponse,
@@ -9,6 +9,7 @@ import type {
   GeneratePromptResponse,
   GenerateTitleResponse,
   ImageModelsResponse,
+  ProjectMaterialsResponse,
   RefineImageResponse,
   CreateProjectParams,
   CreateProjectResponse,
@@ -24,7 +25,7 @@ export function getImageModels(accessToken: string, signal?: AbortSignal): Promi
 
 /**
  * A user can have at most ImagePipelineOptions.MaxProjects (30) projects at all - creating
- * a 31st permanently deletes their oldest one server-side (see CreateProjectAsync). page is
+ * a 31st is refused with PROJECT_LIMIT_REACHED; nothing is deleted to make room. page is
  * 1-based; pageSize defaults to 12 server-side if omitted.
  */
 export function listProjects(
@@ -144,4 +145,32 @@ export function deleteProjectImages(
     { generatedImageIds, referenceIndices },
     { accessToken, signal },
   );
+}
+
+export function getProjectMaterials(projectId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
+  return apiGet<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials`, { accessToken, signal });
+}
+
+/** Renames materials (text only). Future generations use the new names; existing images are not regenerated. */
+export function renameMaterials(
+  projectId: string,
+  materials: { id: string; name: string }[],
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<ProjectMaterialsResponse> {
+  return apiPatchJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials`, { materials }, { accessToken, signal });
+}
+
+/** Shows the material concept on a different generated image. Call labelConceptImage afterwards if it comes back unlabelled. */
+export function setConceptImage(projectId: string, imageId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
+  return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/images/${imageId}/set-concept`, {}, { accessToken, signal });
+}
+
+/**
+ * Locates the materials on the concept image (one Gemini Flash call, ~10 s, no credits).
+ * Idempotent and a no-op while there is no concept image yet, so it is safe to call
+ * whenever the concept looks unlabelled.
+ */
+export function labelConceptImage(projectId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
+  return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials/label`, {}, { accessToken, signal });
 }
