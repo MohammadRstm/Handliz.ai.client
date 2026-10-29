@@ -721,6 +721,7 @@ export function ProjectPage() {
             <MaterialsPanel
               concept={concept}
               conceptImageSrc={conceptImage ? imageUrl(conceptImage.thumbnailUrl) : null}
+              hasGeneratedImages={images.length > 0}
               isLabelling={isLabelling}
               onRename={handleRenameMaterial}
               onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}

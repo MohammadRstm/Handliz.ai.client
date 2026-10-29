@@ -306,6 +306,10 @@
   }
 
   .side {
+    /* The wide layout's flex-basis is the panel width, which in this column layout would
+       set its height - to 0, collapsing it into an empty scroll box. */
+    flex: none;
+    overflow-y: visible;
     width: 100%;
     max-width: 900px;
     margin: 0 auto;
@@ -316,5 +320,11 @@
 
   .withMaterials {
     --materials-panel-width: 0px;
+  }
+
+  /* The grid column's bottom padding keeps its last row clear of the fixed input bar;
+     with the panel stacked underneath, the panel's own padding does that instead. */
+  .withMaterials .main {
+    padding-bottom: 24px;
   }
 }

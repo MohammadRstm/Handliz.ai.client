@@ -11,6 +11,8 @@ interface MaterialsPanelProps {
   concept: ProjectMaterialsResponse;
   /** Full-size signed URL of the concept image, already absolute - or null before the first image lands. */
   conceptImageSrc: string | null;
+  /** With no concept image, decides whether the hint says "wait for the first image" or "pick one" (after the concept image was deleted). */
+  hasGeneratedImages: boolean;
   isLabelling: boolean;
   /** Resolves once the rename is saved; rejects to put the old name back. */
   onRename: (materialId: string, name: string) => Promise<void>;
@@ -23,7 +25,14 @@ interface MaterialsPanelProps {
  * A rename only changes future generations - the existing images, and the boxes on the
  * concept image, stay as they are.
  */
-export function MaterialsPanel({ concept, conceptImageSrc, isLabelling, onRename, onOpenConceptImage }: MaterialsPanelProps) {
+export function MaterialsPanel({
+  concept,
+  conceptImageSrc,
+  hasGeneratedImages,
+  isLabelling,
+  onRename,
+  onOpenConceptImage,
+}: MaterialsPanelProps) {
   const [labelsHidden, setLabelsHidden] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
@@ -57,7 +66,11 @@ export function MaterialsPanel({ concept, conceptImageSrc, isLabelling, onRename
           )}
         </div>
       ) : (
-        <p className={styles.hint}>The materials are labelled on the first image once it's ready.</p>
+        <p className={styles.hint}>
+          {hasGeneratedImages
+            ? "Use “Set as concept” on an image to show where these materials are."
+            : "The materials are labelled on the first image once it's ready."}
+        </p>
       )}
 
       <ul className={styles.list}>
