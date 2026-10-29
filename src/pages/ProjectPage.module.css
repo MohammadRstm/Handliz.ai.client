@@ -97,6 +97,30 @@
   color: var(--color-text-muted);
 }
 
+/* Grid column plus, for projects with a material concept, the materials panel on the right. */
+.workspace {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+}
+
+.side {
+  flex: 0 0 var(--materials-panel-width);
+  width: var(--materials-panel-width);
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: 24px 20px 140px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.withMaterials {
+  --materials-panel-width: 320px;
+}
+
 .main {
   flex: 1;
   max-width: 900px;
@@ -123,7 +147,8 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
+  /* Stops short of the materials panel, so it stays centred under the grid column. */
+  right: var(--materials-panel-width, 0px);
   max-width: 900px;
   margin: 0 auto;
   background: var(--color-surface);
@@ -270,4 +295,26 @@
 .sendButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Below this the panel no longer fits beside a usable grid - it moves under the grid and the
+   input bar spans the full width again. */
+@media (max-width: 1100px) {
+  .workspace {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .side {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    position: static;
+    max-height: none;
+    padding: 0 20px 160px;
+  }
+
+  .withMaterials {
+    --materials-panel-width: 0px;
+  }
 }

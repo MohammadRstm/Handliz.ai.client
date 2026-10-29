@@ -94,6 +94,45 @@ export interface CreateProjectResponse {
   warnings: string[];
 }
 
+/** Normalized 0-1000 against the image's own width/height, in Gemini's [ymin, xmin, ymax, xmax] order. */
+export interface MaterialBoxDto {
+  yMin: number;
+  xMin: number;
+  yMax: number;
+  xMax: number;
+}
+
+export interface ProjectMaterialDto {
+  id: string;
+  /** "M1".."M5" - stable for the life of the material. */
+  label: string;
+  /** The only user-editable field. */
+  name: string;
+  /** Where GPT placed it on the building - shown, never edited. */
+  regionDescription: string;
+  order: number;
+  /** Where it appears on the concept image, or null when it isn't labelled there (or wasn't found). */
+  box: MaterialBoxDto | null;
+}
+
+/**
+ * The project's material concept: up to five dominant materials chosen by the first prompt
+ * step, and the generated image they are labelled on. Empty materials means the project
+ * predates the feature (or GPT found nothing worth pinning down) - show no panel.
+ */
+export interface ProjectMaterialsResponse {
+  success: true;
+  /** Null until the project's first image finishes. */
+  conceptImageId: string | null;
+  conceptVersion: number;
+  /**
+   * False with a conceptImageId and materials means labelConceptImage still needs calling;
+   * true with no boxes means labelling ran and found none of the materials in view.
+   */
+  conceptLabelled: boolean;
+  materials: ProjectMaterialDto[];
+}
+
 export interface ProjectDetailResponse {
   success: true;
   id: string;
@@ -109,6 +148,7 @@ export interface ProjectDetailResponse {
   generatedPrompt: string | null;
   referenceImages: UploadedReferenceImageDto[];
   images: GeneratedImageDto[];
+  concept: ProjectMaterialsResponse;
 }
 
 export interface GeneratePromptResponse {

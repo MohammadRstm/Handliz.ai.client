@@ -6,6 +6,7 @@ import type {
   ProjectDetailResponse,
   GeneratedImageDto,
   ImageModelsResponse,
+  ProjectMaterialsResponse,
   TimeOfDay,
   UploadedReferenceImageDto,
   WeatherCondition,
@@ -18,6 +19,7 @@ import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
+import { MaterialsPanel } from "../components/MaterialsPanel";
 import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
 import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
@@ -88,6 +90,41 @@ export function ProjectPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<Error | null>(null);
 
+  // The project's material concept (see MaterialsPanel). Mirrored into a ref because the
+  // image-generation callbacks that decide whether to label it are created before it loads.
+  const [concept, setConcept] = useState<ProjectMaterialsResponse | null>(null);
+  const conceptRef = useRef<ProjectMaterialsResponse | null>(null);
+  const [isLabelling, setIsLabelling] = useState(false);
+  const [conceptError, setConceptError] = useState<Error | null>(null);
+  const labelInFlight = useRef(false);
+
+  useEffect(() => {
+    conceptRef.current = concept;
+  }, [concept]);
+
+  // Labelling is a separate ~10 s Gemini call the backend keeps out of image generation,
+  // so the first image isn't held back by it - the client asks for it as soon as the
+  // concept looks unlabelled. One call at a time: the first batch's images finish within
+  // seconds of each other, and the backend's labelled check isn't a lock.
+  const labelConceptIfNeeded = useCallback(
+    (targetProjectId: string) => {
+      const current = conceptRef.current;
+      if (!accessToken || labelInFlight.current || !current || current.materials.length === 0 || current.conceptLabelled) return;
+      labelInFlight.current = true;
+      setIsLabelling(true);
+      setConceptError(null);
+      projectsApi
+        .labelConceptImage(targetProjectId, accessToken)
+        .then(setConcept)
+        .catch((err) => setConceptError(toError(err)))
+        .finally(() => {
+          labelInFlight.current = false;
+          setIsLabelling(false);
+        });
+    },
+    [accessToken],
+  );
+
   const imagesKickedOffForProjectId = useRef<string | null>(null);
   const promptKickedOffForProjectId = useRef<string | null>(null);
   const titleKickedOffForProjectId = useRef<string | null>(null);
@@ -106,6 +143,9 @@ export function ProjectPage() {
         .generateProjectImage(targetProjectId, index, accessToken)
         .then((dto) => {
           setImages((prev) => [...prev.filter((img) => img.index !== index), dto].sort((a, b) => a.index - b.index));
+          // The first image of the first batch to land becomes the concept image server-side,
+          // so the concept is ready to label from here. A no-op once it is labelled.
+          labelConceptIfNeeded(targetProjectId);
           // Only on success: a failed call releases its credit hold rather than spending
           // it (see the backend's fail-open metering), so usage genuinely hasn't changed
           // when this rejects - refreshing there would just be a wasted round trip.
@@ -122,7 +162,7 @@ export function ProjectPage() {
           });
         });
     },
-    [accessToken, refreshUsage],
+    [accessToken, refreshUsage, labelConceptIfNeeded],
   );
 
   const kickOffMissingImages = useCallback(
@@ -158,7 +198,11 @@ export function ProjectPage() {
         setCatalog(models);
         setImages(response.images);
         setUploadedImages(response.referenceImages);
+        setConcept(response.concept);
+        conceptRef.current = response.concept;
         originalReferenceCount.current = response.referenceImages.length;
+        // Covers a project reopened after its labelling call failed or was cut short.
+        if (response.concept.conceptImageId) labelConceptIfNeeded(projectId);
 
         setEditTimeOfDay(response.timeOfDay as TimeOfDay);
         setEditWeather(response.weather as WeatherCondition);
@@ -196,7 +240,21 @@ export function ProjectPage() {
           .then((promptResponse) => {
             if (cancelled) return;
             setProject((prev) => (prev ? { ...prev, generatedPrompt: promptResponse.generatedPrompt } : prev));
-            kickOffMissingImages(projectId, response.requestedImageCount, presentIndices);
+            // The prompt step also chose the materials; fetch them before the images start
+            // landing, so the first one can trigger labelling.
+            projectsApi
+              .getProjectMaterials(projectId, accessToken)
+              .then((materials) => {
+                if (cancelled) return;
+                setConcept(materials);
+                conceptRef.current = materials;
+              })
+              .catch(() => {
+                // Non-critical: the panel just stays hidden until the next load.
+              })
+              .finally(() => {
+                if (!cancelled) kickOffMissingImages(projectId, response.requestedImageCount, presentIndices);
+              });
           })
           .catch((err) => {
             if (!cancelled) setLoadError(toError(err));
@@ -254,6 +312,8 @@ export function ProjectPage() {
       setProject(refreshed);
       setImages(refreshed.images);
       setUploadedImages(refreshed.referenceImages);
+      // Deleting the concept image leaves the project without one (the materials stay).
+      setConcept(refreshed.concept);
       setSelectedGeneratedIds(new Set());
       setSelectedReferenceIndices(new Set());
     } catch (err) {
@@ -312,6 +372,30 @@ export function ProjectPage() {
       else next.add(index);
       return next;
     });
+  };
+
+  const handleRenameMaterial = async (materialId: string, name: string) => {
+    if (!projectId || !accessToken) return;
+    setConceptError(null);
+    try {
+      setConcept(await projectsApi.renameMaterials(projectId, [{ id: materialId, name }], accessToken));
+    } catch (err) {
+      setConceptError(toError(err));
+      throw err;
+    }
+  };
+
+  const handleSetConcept = async (imageId: string) => {
+    if (!projectId || !accessToken || isLabelling) return;
+    setConceptError(null);
+    try {
+      const updated = await projectsApi.setConceptImage(projectId, imageId, accessToken);
+      setConcept(updated);
+      conceptRef.current = updated;
+      labelConceptIfNeeded(projectId);
+    } catch (err) {
+      setConceptError(toError(err));
+    }
   };
 
   const handleAttachClick = () => fileInputRef.current?.click();
@@ -443,8 +527,13 @@ export function ProjectPage() {
     );
   }
 
+  // Projects from before the material concept existed (and any where GPT found nothing
+  // worth pinning down) have no materials - they keep the single-column layout.
+  const showMaterials = (concept?.materials.length ?? 0) > 0;
+  const conceptImage = concept?.conceptImageId ? images.find((img) => img.imageId === concept.conceptImageId) : undefined;
+
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${showMaterials ? styles.withMaterials : ""}`}>
       <header className={styles.header}>
         <div className={styles.headerTopRow}>
           <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
@@ -464,165 +553,182 @@ export function ProjectPage() {
         </div>
       </header>
 
-      <main className={styles.main}>
-        <div className={styles.grid}>
-          {uploadedImages.map((ref) => (
-            <ProjectImageTile
-              key={`reference-${ref.index}`}
-              status="loaded"
-              src={imageUrl(ref.thumbnailUrl)}
-              label={`Reference photo ${ref.index + 1}`}
-              isChecked={selectedReferenceIndices.has(ref.index)}
-              onToggleCheck={() => toggleReferenceSelection(ref.index)}
-              isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
-              onClick={() => openLightbox(`reference-${ref.index}`)}
-            />
-          ))}
-
-          {Array.from({ length: project.requestedImageCount }, (_, index) => {
-            const image = images.find((img) => img.index === index);
-            if (image) {
-              return (
-                <ProjectImageTile
-                  key={`generated-${index}`}
-                  status="loaded"
-                  src={imageUrl(image.thumbnailUrl)}
-                  label={`Generated image ${index + 1}`}
-                  isChecked={selectedGeneratedIds.has(image.imageId)}
-                  onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
-                  isRefining={refiningImageIds.has(image.imageId)}
-                  onClick={() => openLightbox(image.imageId)}
-                />
-              );
-            }
-            if (failedIndices.has(index)) {
-              return (
-                <ProjectImageTile
-                  key={`generated-${index}`}
-                  status="failed"
-                  label={`Image ${index + 1}`}
-                  onRetry={() => projectId && generateIndex(projectId, index)}
-                />
-              );
-            }
-            return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
-          })}
-
-          {Array.from({ length: pendingNewImageCount }, (_, i) => (
-            <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
-          ))}
-        </div>
-
-        {generatingIndices.size === 0 && (
-          <form className={styles.refineBar} onSubmit={handleEdit}>
-            <div className={styles.refineTarget}>
-              {hasSelection
-                ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s) · Press Delete to remove`
-                : images.length > 0
-                  ? "Editing all recently generated images"
-                  : "Select a photo above, or attach a new one, to generate images"}
-            </div>
-            <div className={styles.refineInputRow}>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
-              <button
-                type="button"
-                className={styles.attachButton}
-                onClick={handleAttachClick}
-                disabled={isUploadingImage || isEditing || isDeleting}
-                aria-label="Add another photo to this project"
-                title="Add another photo to this project"
-              >
-                {isUploadingImage ? <Spinner /> : <AttachIcon />}
-              </button>
-
-              <input
-                type="text"
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                placeholder={
-                  hasSelection ? "Edit only the selected images..." : "Describe an edit to apply to your recent images..."
-                }
-                maxLength={MAX_INSTRUCTION_LENGTH}
-                disabled={isEditing || isDeleting}
-                className={styles.refineInput}
+      <div className={styles.workspace}>
+        <main className={styles.main}>
+          <div className={styles.grid}>
+            {uploadedImages.map((ref) => (
+              <ProjectImageTile
+                key={`reference-${ref.index}`}
+                status="loaded"
+                src={imageUrl(ref.thumbnailUrl)}
+                label={`Reference photo ${ref.index + 1}`}
+                isChecked={selectedReferenceIndices.has(ref.index)}
+                onToggleCheck={() => toggleReferenceSelection(ref.index)}
+                isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
+                onClick={() => openLightbox(`reference-${ref.index}`)}
               />
+            ))}
 
-              <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing || isDeleting}>
-                <label className={styles.settingField}>
-                  <span>Time of day</span>
-                  <select value={editTimeOfDay} onChange={(e) => setEditTimeOfDay(e.target.value as TimeOfDay)}>
-                    {TIME_OF_DAY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.settingField}>
-                  <span>Weather</span>
-                  <select value={editWeather} onChange={(e) => setEditWeather(e.target.value as WeatherCondition)}>
-                    {WEATHER_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.settingField}>
-                  <span>Location</span>
-                  <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} maxLength={200} />
-                </label>
-                <label className={styles.settingField}>
-                  <span>Number of new images</span>
-                  <select value={editImageCount} onChange={(e) => setEditImageCount(Number(e.target.value))}>
-                    {Array.from({ length: catalog.maxGeneratedImages }, (_, i) => i + 1).map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className={styles.settingField}>
-                  <span>Aspect ratio</span>
-                  <AspectRatioPicker ratios={catalog.supportedAspectRatios} selected={editAspectRatio} onSelect={setEditAspectRatio} />
-                </div>
-              </Dropdown>
+            {Array.from({ length: project.requestedImageCount }, (_, index) => {
+              const image = images.find((img) => img.index === index);
+              if (image) {
+                return (
+                  <ProjectImageTile
+                    key={`generated-${index}`}
+                    status="loaded"
+                    src={imageUrl(image.thumbnailUrl)}
+                    label={`Generated image ${index + 1}`}
+                    isChecked={selectedGeneratedIds.has(image.imageId)}
+                    onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
+                    isRefining={refiningImageIds.has(image.imageId)}
+                    isConcept={showMaterials && image.imageId === concept?.conceptImageId}
+                    onSetConcept={showMaterials ? () => void handleSetConcept(image.imageId) : undefined}
+                    onClick={() => openLightbox(image.imageId)}
+                  />
+                );
+              }
+              if (failedIndices.has(index)) {
+                return (
+                  <ProjectImageTile
+                    key={`generated-${index}`}
+                    status="failed"
+                    label={`Image ${index + 1}`}
+                    onRetry={() => projectId && generateIndex(projectId, index)}
+                  />
+                );
+              }
+              return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
+            })}
 
-              <div className={styles.lockedDropdown} title="Current aspect ratio">
-                <AspectRatioIcon ratio={editAspectRatio} />
-                {editAspectRatio}
+            {Array.from({ length: pendingNewImageCount }, (_, i) => (
+              <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
+            ))}
+          </div>
+
+          {generatingIndices.size === 0 && (
+            <form className={styles.refineBar} onSubmit={handleEdit}>
+              <div className={styles.refineTarget}>
+                {hasSelection
+                  ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s) · Press Delete to remove`
+                  : images.length > 0
+                    ? "Editing all recently generated images"
+                    : "Select a photo above, or attach a new one, to generate images"}
               </div>
+              <div className={styles.refineInputRow}>
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
+                <button
+                  type="button"
+                  className={styles.attachButton}
+                  onClick={handleAttachClick}
+                  disabled={isUploadingImage || isEditing || isDeleting}
+                  aria-label="Add another photo to this project"
+                  title="Add another photo to this project"
+                >
+                  {isUploadingImage ? <Spinner /> : <AttachIcon />}
+                </button>
 
-              <Dropdown
-                trigger={
-                  <span className={styles.modelTrigger}>
-                    {catalog.models.find((m) => m.key === editModelKey)?.displayName ?? "Model"}
-                    <ChevronUpDownIcon />
-                  </span>
-                }
-                align="right"
-                disabled={isEditing || isDeleting}
-              >
-                <ModelPicker
-                  models={catalog.models}
-                  selectedKey={editModelKey}
-                  onSelectKey={handleSelectModel}
-                  selectedImageSize={editImageSize}
-                  onSelectImageSize={setEditImageSize}
+                <input
+                  type="text"
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  placeholder={
+                    hasSelection ? "Edit only the selected images..." : "Describe an edit to apply to your recent images..."
+                  }
+                  maxLength={MAX_INSTRUCTION_LENGTH}
                   disabled={isEditing || isDeleting}
+                  className={styles.refineInput}
                 />
-              </Dropdown>
 
-              <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing || isDeleting}>
-                {isEditing ? <Spinner /> : "Send"}
-              </button>
-            </div>
-            {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
-            {editError && <ErrorBanner error={editError} onDismiss={() => setEditError(null)} />}
-            {deleteError && <ErrorBanner error={deleteError} onDismiss={() => setDeleteError(null)} />}
-          </form>
+                <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing || isDeleting}>
+                  <label className={styles.settingField}>
+                    <span>Time of day</span>
+                    <select value={editTimeOfDay} onChange={(e) => setEditTimeOfDay(e.target.value as TimeOfDay)}>
+                      {TIME_OF_DAY_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.settingField}>
+                    <span>Weather</span>
+                    <select value={editWeather} onChange={(e) => setEditWeather(e.target.value as WeatherCondition)}>
+                      {WEATHER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.settingField}>
+                    <span>Location</span>
+                    <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} maxLength={200} />
+                  </label>
+                  <label className={styles.settingField}>
+                    <span>Number of new images</span>
+                    <select value={editImageCount} onChange={(e) => setEditImageCount(Number(e.target.value))}>
+                      {Array.from({ length: catalog.maxGeneratedImages }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className={styles.settingField}>
+                    <span>Aspect ratio</span>
+                    <AspectRatioPicker ratios={catalog.supportedAspectRatios} selected={editAspectRatio} onSelect={setEditAspectRatio} />
+                  </div>
+                </Dropdown>
+
+                <div className={styles.lockedDropdown} title="Current aspect ratio">
+                  <AspectRatioIcon ratio={editAspectRatio} />
+                  {editAspectRatio}
+                </div>
+
+                <Dropdown
+                  trigger={
+                    <span className={styles.modelTrigger}>
+                      {catalog.models.find((m) => m.key === editModelKey)?.displayName ?? "Model"}
+                      <ChevronUpDownIcon />
+                    </span>
+                  }
+                  align="right"
+                  disabled={isEditing || isDeleting}
+                >
+                  <ModelPicker
+                    models={catalog.models}
+                    selectedKey={editModelKey}
+                    onSelectKey={handleSelectModel}
+                    selectedImageSize={editImageSize}
+                    onSelectImageSize={setEditImageSize}
+                    disabled={isEditing || isDeleting}
+                  />
+                </Dropdown>
+
+                <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing || isDeleting}>
+                  {isEditing ? <Spinner /> : "Send"}
+                </button>
+              </div>
+              {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
+              {editError && <ErrorBanner error={editError} onDismiss={() => setEditError(null)} />}
+              {deleteError && <ErrorBanner error={deleteError} onDismiss={() => setDeleteError(null)} />}
+            </form>
+          )}
+        </main>
+
+        {showMaterials && concept && (
+          <div className={styles.side}>
+            <MaterialsPanel
+              concept={concept}
+              conceptImageSrc={conceptImage ? imageUrl(conceptImage.thumbnailUrl) : null}
+              isLabelling={isLabelling}
+              onRename={handleRenameMaterial}
+              onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}
+            />
+            {conceptError && <ErrorBanner error={conceptError} onDismiss={() => setConceptError(null)} />}
+          </div>
         )}
-      </main>
+      </div>
 
       {lightboxIndex !== null && (
         <Lightbox
