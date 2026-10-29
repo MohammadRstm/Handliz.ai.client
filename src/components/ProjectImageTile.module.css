@@ -138,3 +138,10 @@
 .setConceptButton:hover {
   border-color: var(--color-accent);
 }
+
+/* Touch screens have no hover to reveal it, so it stays visible there. */
+@media (hover: none) {
+  .setConceptButton {
+    opacity: 1;
+  }
+}
