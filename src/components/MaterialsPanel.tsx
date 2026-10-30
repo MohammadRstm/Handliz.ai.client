@@ -9,37 +9,57 @@ const MAX_NAME_LENGTH = 100;
 
 interface MaterialsPanelProps {
   concept: ProjectMaterialsResponse;
-  /** Full-size signed URL of the concept image, already absolute - or null before the first image lands. */
+  /**
+   * Signed URL of the concept image for the small preview, already absolute - or null when
+   * there is none yet, or while it is shown full size in the main column (the review step).
+   */
   conceptImageSrc: string | null;
   /** With no concept image, decides whether the hint says "wait for the first image" or "pick one" (after the concept image was deleted). */
   hasGeneratedImages: boolean;
   isLabelling: boolean;
+  /** Hover and selection are owned by the page, so this list and a full-size overlay stay in step. */
+  hoveredId: string | null;
+  selectedId: string | null;
+  onHover: (materialId: string | null) => void;
+  onSelect: (materialId: string | null) => void;
   /** Resolves once the rename is saved; rejects to put the old name back. */
   onRename: (materialId: string, name: string) => Promise<void>;
   onOpenConceptImage?: () => void;
+  /** Present only while the concept awaits approval: renders the Approve / Try again actions. */
+  review?: {
+    canApprove: boolean;
+    isBusy: boolean;
+    onApprove: () => void;
+    onRetry: () => void;
+  };
 }
 
 /**
  * The project's material concept, beside the grid: the concept image with each material
- * boxed and labelled, and the list of materials with their names editable as plain text.
- * A rename only changes future generations - the existing images, and the boxes on the
- * concept image, stay as they are.
+ * tinted over its surfaces, and the list of materials with their names editable as plain
+ * text. A rename only changes future generations - the existing images, and the outlines on
+ * the concept image, stay as they are.
  */
 export function MaterialsPanel({
   concept,
   conceptImageSrc,
   hasGeneratedImages,
   isLabelling,
+  hoveredId,
+  selectedId,
+  onHover,
+  onSelect,
   onRename,
   onOpenConceptImage,
+  review,
 }: MaterialsPanelProps) {
   const [labelsHidden, setLabelsHidden] = useState(false);
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const activeId = hoveredId ?? selectedId;
 
   return (
     <aside className={styles.panel} aria-label="Materials">
       <div className={styles.header}>
-        <h2 className={styles.heading}>Materials</h2>
+        <h2 className={styles.heading}>{review ? "Review the materials" : "Materials"}</h2>
         {conceptImageSrc && concept.conceptLabelled && (
           <button type="button" className={styles.toggle} onClick={() => setLabelsHidden((v) => !v)} aria-pressed={labelsHidden}>
             {labelsHidden ? "Show labels" : "Hide labels"}
@@ -47,30 +67,44 @@ export function MaterialsPanel({
         )}
       </div>
 
+      {review && (
+        <p className={styles.hint}>
+          These are the main materials for the whole project. Rename any that aren't right, then approve to generate your images.
+        </p>
+      )}
+
       {conceptImageSrc ? (
         <div className={styles.preview}>
-          <button type="button" className={styles.previewButton} onClick={onOpenConceptImage} title="Open the concept image">
-            <MaterialOverlay
-              src={conceptImageSrc}
-              alt="Concept image"
-              materials={concept.materials}
-              hidden={labelsHidden}
-              highlightedId={highlightedId}
-            />
-          </button>
+          <MaterialOverlay
+            src={conceptImageSrc}
+            alt="Concept image"
+            materials={concept.materials}
+            hidden={labelsHidden}
+            activeId={activeId}
+            selectedId={selectedId}
+            onHover={onHover}
+            onSelect={onSelect}
+          />
+          {onOpenConceptImage && (
+            <button type="button" className={styles.expandButton} onClick={onOpenConceptImage} title="Open the concept image">
+              Open
+            </button>
+          )}
           {isLabelling && (
             <div className={styles.labelling}>
               <Spinner />
-              <span>Locating materials...</span>
+              <span>Tracing materials...</span>
             </div>
           )}
         </div>
       ) : (
-        <p className={styles.hint}>
-          {hasGeneratedImages
-            ? "Use “Set as concept” on an image to show where these materials are."
-            : "The materials are labelled on the first image once it's ready."}
-        </p>
+        !review && (
+          <p className={styles.hint}>
+            {hasGeneratedImages
+              ? "Use “Set as concept” on an image to show where these materials are."
+              : "The materials are shown on the first image once it's ready."}
+          </p>
+        )
       )}
 
       <ul className={styles.list}>
@@ -80,27 +114,50 @@ export function MaterialsPanel({
           <MaterialRow
             key={`${material.id}:${material.name}`}
             material={material}
+            isActive={activeId === material.id}
+            isSelected={selectedId === material.id}
             showMissing={concept.conceptLabelled && !material.box}
             onRename={onRename}
-            onHover={setHighlightedId}
+            onHover={onHover}
+            onSelect={onSelect}
           />
         ))}
       </ul>
 
-      <p className={styles.footnote}>Renaming a material applies to images generated from now on.</p>
+      {review ? (
+        <div className={styles.actions}>
+          <button type="button" className={styles.approveButton} onClick={review.onApprove} disabled={!review.canApprove || review.isBusy}>
+            Approve materials
+          </button>
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={review.onRetry}
+            disabled={review.isBusy}
+            title="Render a new concept image and choose the materials again (uses credits)"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <p className={styles.footnote}>Renaming a material applies to images generated from now on.</p>
+      )}
     </aside>
   );
 }
 
 interface MaterialRowProps {
   material: ProjectMaterialDto;
+  isActive: boolean;
+  isSelected: boolean;
   /** Labelling ran and didn't find this material on the concept image. */
   showMissing: boolean;
   onRename: (materialId: string, name: string) => Promise<void>;
   onHover: (materialId: string | null) => void;
+  onSelect: (materialId: string | null) => void;
 }
 
-function MaterialRow({ material, showMissing, onRename, onHover }: MaterialRowProps) {
+function MaterialRow({ material, isActive, isSelected, showMissing, onRename, onHover, onSelect }: MaterialRowProps) {
   const [draft, setDraft] = useState(material.name);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -123,10 +180,22 @@ function MaterialRow({ material, showMissing, onRename, onHover }: MaterialRowPr
   };
 
   return (
-    <li className={styles.row} onMouseEnter={() => onHover(material.id)} onMouseLeave={() => onHover(null)}>
-      <span className={styles.chip} style={{ background: materialColor(material.label) }}>
+    <li
+      className={`${styles.row} ${isActive ? styles.rowActive : ""} ${isSelected ? styles.rowSelected : ""}`}
+      style={{ "--row-color": materialColor(material.label) } as React.CSSProperties}
+      onMouseEnter={() => onHover(material.id)}
+      onMouseLeave={() => onHover(null)}
+    >
+      <button
+        type="button"
+        className={styles.chip}
+        style={{ background: materialColor(material.label) }}
+        onClick={() => onSelect(isSelected ? null : material.id)}
+        aria-pressed={isSelected}
+        title={isSelected ? "Unpin on the image" : "Pin on the image"}
+      >
         {material.label}
-      </span>
+      </button>
       <div className={styles.fields}>
         <input
           type="text"

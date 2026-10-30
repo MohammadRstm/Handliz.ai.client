@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef, useState } from "react";
 import type { ProjectMaterialDto } from "../api/projectTypes";
 import { materialColor } from "./materialColor";
 import styles from "./MaterialOverlay.module.css";
@@ -8,139 +7,135 @@ interface MaterialOverlayProps {
   src: string;
   alt: string;
   materials: ProjectMaterialDto[];
-  /** Hides the boxes, arrows and labels; the image stays. */
+  /** Hides the fills and labels; the image stays. */
   hidden?: boolean;
-  /** Emphasizes one material and dims the rest - driven by hovering its row in the panel. */
-  highlightedId?: string | null;
+  /** Brightened, with the others dimmed - whichever material is hovered or selected. */
+  activeId?: string | null;
+  /** Pinned by a click; shown with a solid outline even when another one is hovered. */
+  selectedId?: string | null;
+  onHover?: (materialId: string | null) => void;
+  /** Clicking a material selects it; clicking it again, or empty image, clears the selection. */
+  onSelect?: (materialId: string | null) => void;
 }
 
-const CHIP_W = 30;
-const CHIP_H = 20;
-const GAP = 6;
+type Point = [number, number];
 
-interface Placed {
+interface Shape {
   material: ProjectMaterialDto;
   color: string;
-  box: { x: number; y: number; w: number; h: number };
-  chip: { x: number; y: number };
+  /** Each polygon as [x, y] points on the 0-1000 scale. */
+  polygons: Point[][];
+  area: number;
+  /** Chip position as percentages of the image, at the centre of the material's largest polygon. */
+  chip: { left: number; top: number };
 }
 
-/**
- * Lays each label chip just outside its box, on whichever side has room, and stacks chips
- * that would overlap. Boxes routinely nest (a wall box around a door box), so without the
- * stacking two labels land on the same spot.
- */
-function place(materials: ProjectMaterialDto[], width: number, height: number): Placed[] {
-  const placed: Placed[] = materials
-    .filter((m) => m.box)
-    .map((m) => {
-      const b = m.box!;
-      const box = {
-        x: (b.xMin / 1000) * width,
-        y: (b.yMin / 1000) * height,
-        w: ((b.xMax - b.xMin) / 1000) * width,
-        h: ((b.yMax - b.yMin) / 1000) * height,
-      };
-      let x: number;
-      if (box.x - CHIP_W - GAP * 3 >= 0) x = box.x - CHIP_W - GAP * 3;
-      else if (box.x + box.w + CHIP_W + GAP * 3 <= width) x = box.x + box.w + GAP * 3;
-      else x = box.x + GAP;
-      const y = Math.min(Math.max(box.y + GAP, GAP), height - CHIP_H - GAP);
-      return { material: m, color: materialColor(m.label), box, chip: { x, y } };
-    })
-    .sort((a, b) => a.chip.y - b.chip.y);
-
-  for (let i = 1; i < placed.length; i++) {
-    for (let j = 0; j < i; j++) {
-      const a = placed[j].chip;
-      const c = placed[i].chip;
-      const overlapsX = Math.abs(a.x - c.x) < CHIP_W + 2;
-      const overlapsY = Math.abs(a.y - c.y) < CHIP_H + 2;
-      if (overlapsX && overlapsY) c.y = Math.min(a.y + CHIP_H + 4, height - CHIP_H - GAP);
-    }
+function polygonArea(points: Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    sum += x1 * y2 - x2 * y1;
   }
-  return placed;
+  return Math.abs(sum) / 2;
+}
+
+function centroid(points: Point[]): Point {
+  const x = points.reduce((s, p) => s + p[0], 0) / points.length;
+  const y = points.reduce((s, p) => s + p[1], 0) / points.length;
+  return [x, y];
 }
 
 /**
- * A generated image with its concept materials drawn on top: a box around each material's
- * region, a label chip, and an arrow from the chip into the region. Drawn in the image's
- * own rendered pixel space (measured, not a 0-1000 viewBox stretched over it) so text and
- * strokes keep their size whatever the image's aspect ratio. The image itself is never
- * modified - the backend stores only the box coordinates.
+ * Builds each material's polygons from the API's [y, x] outlines - or, for images labelled
+ * before outlines existed, from its box - and orders them largest first, so smaller surfaces
+ * (windows, a door) are drawn on top of the wall they sit in and receive the hover.
  */
-export function MaterialOverlay({ src, alt, materials, hidden, highlightedId }: MaterialOverlayProps) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+function toShapes(materials: ProjectMaterialDto[]): Shape[] {
+  return materials
+    .map((material): Shape | null => {
+      let polygons: Point[][];
+      if (material.polygons && material.polygons.length > 0) {
+        polygons = material.polygons.map((poly) => poly.map(([y, x]) => [x, y] as Point));
+      } else if (material.box) {
+        const { yMin, xMin, yMax, xMax } = material.box;
+        polygons = [[[xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax]]];
+      } else {
+        return null;
+      }
+      const areas = polygons.map(polygonArea);
+      const largest = polygons[areas.indexOf(Math.max(...areas))];
+      const [cx, cy] = centroid(largest);
+      return {
+        material,
+        color: materialColor(material.label),
+        polygons,
+        area: areas.reduce((s, a) => s + a, 0),
+        chip: { left: cx / 10, top: cy / 10 },
+      };
+    })
+    .filter((shape): shape is Shape => shape !== null)
+    .sort((a, b) => b.area - a.area);
+}
 
-  useLayoutEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    const observer = new ResizeObserver(() => {
-      if (img.clientWidth > 0 && img.clientHeight > 0) setSize({ width: img.clientWidth, height: img.clientHeight });
-    });
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [src]);
-
-  const placed = size ? place(materials, size.width, size.height) : [];
+/**
+ * A generated image with its concept materials painted over the actual surfaces: each
+ * material's outline filled with its colour at low opacity, so the material underneath stays
+ * visible, plus a small label chip. Hovering or selecting a material brightens it and dims the
+ * rest. Drawn in a 0-1000 viewBox stretched over the image (outlines are normalized the same
+ * way), with non-scaling strokes so edges stay crisp at any size. The image itself is never
+ * modified - the backend stores only the outlines.
+ */
+export function MaterialOverlay({ src, alt, materials, hidden, activeId, selectedId, onHover, onSelect }: MaterialOverlayProps) {
+  const shapes = toShapes(materials);
+  const interactive = onHover != null || onSelect != null;
 
   return (
-    <div className={styles.wrap}>
-      <img ref={imgRef} src={src} alt={alt} className={styles.image} />
-      {size && !hidden && placed.length > 0 && (
-        <svg className={styles.svg} viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
-          <defs>
-            {placed.map(({ material, color }) => (
-              <marker
-                key={material.id}
-                id={`arrow-${material.id}`}
-                viewBox="0 0 10 10"
-                refX="9"
-                refY="5"
-                markerWidth="7"
-                markerHeight="7"
-                markerUnits="userSpaceOnUse"
-                orient="auto-start-reverse"
-              >
-                <path d="M0,0 L10,5 L0,10 z" style={{ fill: color }} />
-              </marker>
-            ))}
-          </defs>
-          {placed.map(({ material, color, box, chip }) => {
-            const dimmed = highlightedId != null && highlightedId !== material.id;
-            const emphasized = highlightedId === material.id;
-            const chipCenterY = chip.y + CHIP_H / 2;
-            const startX = chip.x < box.x ? chip.x + CHIP_W : chip.x > box.x + box.w ? chip.x : chip.x + CHIP_W / 2;
-            const startY = chip.x < box.x || chip.x > box.x + box.w ? chipCenterY : chip.y + CHIP_H;
-            return (
-              <g key={material.id} className={styles.material} style={{ opacity: dimmed ? 0.25 : 1 }}>
-                <rect
-                  x={box.x}
-                  y={box.y}
-                  width={box.w}
-                  height={box.h}
-                  rx={3}
-                  className={styles.box}
-                  style={{ stroke: color, strokeWidth: emphasized ? 3.5 : 2 }}
-                />
-                <line
-                  x1={startX}
-                  y1={startY}
-                  x2={box.x + box.w / 2}
-                  y2={box.y + box.h / 2}
-                  className={styles.arrow}
-                  style={{ stroke: color }}
-                  markerEnd={`url(#arrow-${material.id})`}
-                />
-                <rect x={chip.x} y={chip.y} width={CHIP_W} height={CHIP_H} rx={5} style={{ fill: color }} />
-                <text x={chip.x + CHIP_W / 2} y={chipCenterY} className={styles.chipText}>
-                  {material.label}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+    <div className={styles.wrap} onMouseLeave={() => onHover?.(null)}>
+      <img src={src} alt={alt} className={styles.image} onClick={() => onSelect?.(null)} />
+      {!hidden && shapes.length > 0 && (
+        <>
+          <svg className={styles.svg} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+            {shapes.map(({ material, color, polygons }) => {
+              const isActive = activeId === material.id;
+              const isDimmed = activeId != null && !isActive;
+              return (
+                <g
+                  key={material.id}
+                  className={`${styles.material} ${interactive ? styles.interactive : ""}`}
+                  style={{
+                    fill: color,
+                    stroke: color,
+                    fillOpacity: isActive ? 0.55 : isDimmed ? 0.1 : 0.28,
+                    strokeOpacity: isActive || selectedId === material.id ? 1 : isDimmed ? 0.25 : 0.7,
+                    strokeWidth: isActive ? 2.5 : 1.25,
+                  }}
+                  onMouseEnter={() => onHover?.(material.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect?.(selectedId === material.id ? null : material.id);
+                  }}
+                >
+                  {polygons.map((points, i) => (
+                    <polygon key={i} points={points.map(([x, y]) => `${x},${y}`).join(" ")} vectorEffect="non-scaling-stroke" />
+                  ))}
+                </g>
+              );
+            })}
+          </svg>
+          {shapes.map(({ material, color, chip }) => (
+            <span
+              key={material.id}
+              className={`${styles.chip} ${activeId != null && activeId !== material.id ? styles.chipDimmed : ""}`}
+              style={{ left: `${chip.left}%`, top: `${chip.top}%`, background: color }}
+              onMouseEnter={() => onHover?.(material.id)}
+              onClick={() => onSelect?.(selectedId === material.id ? null : material.id)}
+              aria-hidden="true"
+            >
+              {material.label}
+            </span>
+          ))}
+        </>
       )}
     </div>
   );

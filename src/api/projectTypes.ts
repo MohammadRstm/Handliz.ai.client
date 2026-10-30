@@ -113,6 +113,12 @@ export interface ProjectMaterialDto {
   order: number;
   /** Where it appears on the concept image, or null when it isn't labelled there (or wasn't found). */
   box: MaterialBoxDto | null;
+  /**
+   * Its outline on the concept image: one polygon per surface (each window, each wall face),
+   * each a list of [y, x] points normalized 0-1000 like box. Null for images labelled before
+   * outlines existed - fill the box instead.
+   */
+  polygons: [number, number][][] | null;
 }
 
 /**
@@ -145,10 +151,29 @@ export interface ProjectDetailResponse {
   model: ImageModelSummaryDto;
   imageSize: string;
   requestedImageCount: number;
+  /** How many images one batch produces - the approval step's default count, and new-batch edits'. */
+  imageCountPerBatch: number;
+  /**
+   * False while the user reviews the material concept: only the concept image (slot 0)
+   * exists, and the batch waits for approveConcept.
+   */
+  conceptApproved: boolean;
   generatedPrompt: string | null;
   referenceImages: UploadedReferenceImageDto[];
   images: GeneratedImageDto[];
   concept: ProjectMaterialsResponse;
+}
+
+/** The batch approval opened: generate indices firstNewIndex .. requestedImageCount - 1, one call each, in parallel. */
+export interface ApproveConceptResponse {
+  success: true;
+  requestedImageCount: number;
+  firstNewIndex: number;
+  imageCount: number;
+  model: ImageModelSummaryDto;
+  imageSize: string;
+  /** A material was renamed during review, so the prompt was revised first (costs credits). */
+  promptRevised: boolean;
 }
 
 export interface GeneratePromptResponse {

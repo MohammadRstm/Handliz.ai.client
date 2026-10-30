@@ -18,7 +18,9 @@ import { ProjectImageTile } from "../components/ProjectImageTile";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
+import { ApproveConceptDialog, type ApproveSettings } from "../components/ApproveConceptDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
+import { MaterialOverlay } from "../components/MaterialOverlay";
 import { MaterialsPanel } from "../components/MaterialsPanel";
 import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
@@ -97,6 +99,18 @@ export function ProjectPage() {
   const [isLabelling, setIsLabelling] = useState(false);
   const [conceptError, setConceptError] = useState<Error | null>(null);
   const labelInFlight = useRef(false);
+
+  // Hover and click-to-pin on materials, shared by the panel list and whichever overlay is
+  // showing them, so pointing at a row lights its surfaces on the image and vice versa.
+  const [hoveredMaterialId, setHoveredMaterialId] = useState<string | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+
+  // The review step: a new project renders only its concept image; the batch waits for the
+  // user to approve the materials (see the backend's ApproveConceptAsync).
+  const [isApproveOpen, setIsApproveOpen] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveError, setApproveError] = useState<Error | null>(null);
+  const [isRetryingConcept, setIsRetryingConcept] = useState(false);
 
   useEffect(() => {
     conceptRef.current = concept;
@@ -178,6 +192,29 @@ export function ProjectPage() {
     [generateIndex],
   );
 
+  // Stage 1, then the images. The prompt step also chooses the materials, which decides
+  // whether the project opens with only its concept image (materials to review) or goes
+  // straight to its full batch (none chosen) - so the project is re-read before any image is
+  // requested. A callback rather than inline in the load effect because Try again runs it again.
+  const runPromptStep = useCallback(
+    (targetProjectId: string) => {
+      if (!accessToken || promptKickedOffForProjectId.current === targetProjectId) return;
+      promptKickedOffForProjectId.current = targetProjectId;
+      projectsApi
+        .generateProjectPrompt(targetProjectId, accessToken)
+        .then(() => projectsApi.getProject(targetProjectId, accessToken))
+        .then((refreshed) => {
+          setProject(refreshed);
+          setConcept(refreshed.concept);
+          conceptRef.current = refreshed.concept;
+          refreshUsage();
+          kickOffMissingImages(targetProjectId, refreshed.requestedImageCount, new Set(refreshed.images.map((img) => img.index)));
+        })
+        .catch((err) => setLoadError(toError(err)));
+    },
+    [accessToken, kickOffMissingImages, refreshUsage],
+  );
+
   // Load the project, then:
   //  - if it has no title yet, fetch one (fast, text-only) - independent of everything
   //    else, so it typically appears well before the images do.
@@ -208,7 +245,7 @@ export function ProjectPage() {
         setEditWeather(response.weather as WeatherCondition);
         setEditLocation(response.location);
         setEditAspectRatio(response.aspectRatio);
-        setEditImageCount(Math.min(response.requestedImageCount || 1, models.maxGeneratedImages));
+        setEditImageCount(Math.min(response.imageCountPerBatch || 1, models.maxGeneratedImages));
         setEditModelKey(response.model.key);
         setEditImageSize(response.imageSize);
 
@@ -232,33 +269,7 @@ export function ProjectPage() {
           return;
         }
 
-        if (promptKickedOffForProjectId.current === projectId) return;
-        promptKickedOffForProjectId.current = projectId;
-
-        projectsApi
-          .generateProjectPrompt(projectId, accessToken)
-          .then((promptResponse) => {
-            if (cancelled) return;
-            setProject((prev) => (prev ? { ...prev, generatedPrompt: promptResponse.generatedPrompt } : prev));
-            // The prompt step also chose the materials; fetch them before the images start
-            // landing, so the first one can trigger labelling.
-            projectsApi
-              .getProjectMaterials(projectId, accessToken)
-              .then((materials) => {
-                if (cancelled) return;
-                setConcept(materials);
-                conceptRef.current = materials;
-              })
-              .catch(() => {
-                // Non-critical: the panel just stays hidden until the next load.
-              })
-              .finally(() => {
-                if (!cancelled) kickOffMissingImages(projectId, response.requestedImageCount, presentIndices);
-              });
-          })
-          .catch((err) => {
-            if (!cancelled) setLoadError(toError(err));
-          });
+        runPromptStep(projectId);
       })
       .catch((err) => {
         if (!cancelled) setLoadError(toError(err));
@@ -398,6 +409,73 @@ export function ProjectPage() {
     }
   };
 
+  const handleApproveConcept = async (settings: ApproveSettings) => {
+    if (!projectId || !accessToken || isApproving) return;
+    setIsApproving(true);
+    setApproveError(null);
+    try {
+      const result = await projectsApi.approveConcept(projectId, settings, accessToken);
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              conceptApproved: true,
+              requestedImageCount: result.requestedImageCount,
+              imageCountPerBatch: result.imageCount,
+              model: result.model,
+              imageSize: result.imageSize,
+            }
+          : prev,
+      );
+      setEditModelKey(result.model.key);
+      setEditImageSize(result.imageSize);
+      setEditImageCount(result.imageCount);
+      setIsApproveOpen(false);
+      setSelectedMaterialId(null);
+      // Same one-call-per-image fan-out as a new project's first batch.
+      for (let i = result.firstNewIndex; i < result.requestedImageCount; i++) {
+        generateIndex(projectId, i);
+      }
+      if (result.promptRevised) refreshUsage();
+    } catch (err) {
+      setApproveError(toError(err));
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleRetryConcept = async () => {
+    if (!projectId || !accessToken || isRetryingConcept) return;
+    if (!window.confirm("Render a new concept image and choose the materials again? This uses credits.")) return;
+    setIsRetryingConcept(true);
+    setConceptError(null);
+    try {
+      await projectsApi.retryConcept(projectId, accessToken);
+      const emptyConcept: ProjectMaterialsResponse = {
+        success: true,
+        conceptImageId: null,
+        conceptVersion: 0,
+        conceptLabelled: false,
+        materials: [],
+      };
+      setImages([]);
+      setFailedIndices(new Set());
+      setConcept(emptyConcept);
+      conceptRef.current = emptyConcept;
+      setHoveredMaterialId(null);
+      setSelectedMaterialId(null);
+      setProject((prev) => (prev ? { ...prev, generatedPrompt: null, requestedImageCount: 1 } : prev));
+      // Cleared so the prompt and the concept image run again for this same project.
+      promptKickedOffForProjectId.current = null;
+      imagesKickedOffForProjectId.current = null;
+      runPromptStep(projectId);
+    } catch (err) {
+      setConceptError(toError(err));
+    } finally {
+      setIsRetryingConcept(false);
+    }
+  };
+
   const handleAttachClick = () => fileInputRef.current?.click();
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -531,6 +609,11 @@ export function ProjectPage() {
   // worth pinning down) have no materials - they keep the single-column layout.
   const showMaterials = (concept?.materials.length ?? 0) > 0;
   const conceptImage = concept?.conceptImageId ? images.find((img) => img.imageId === concept.conceptImageId) : undefined;
+  // While reviewing, the concept image is shown full size in place of the grid. Its id is
+  // only known once labelling returns, so until then slot 0 stands in - it is the only image.
+  const inReview = !project.conceptApproved;
+  const reviewImage = conceptImage ?? images.find((img) => img.index === 0);
+  const activeMaterialId = hoveredMaterialId ?? selectedMaterialId;
 
   return (
     <div className={`${styles.page} ${showMaterials ? styles.withMaterials : ""}`}>
@@ -555,57 +638,97 @@ export function ProjectPage() {
 
       <div className={styles.workspace}>
         <main className={styles.main}>
-          <div className={styles.grid}>
-            {uploadedImages.map((ref) => (
-              <ProjectImageTile
-                key={`reference-${ref.index}`}
-                status="loaded"
-                src={imageUrl(ref.thumbnailUrl)}
-                label={`Reference photo ${ref.index + 1}`}
-                isChecked={selectedReferenceIndices.has(ref.index)}
-                onToggleCheck={() => toggleReferenceSelection(ref.index)}
-                isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
-                onClick={() => openLightbox(`reference-${ref.index}`)}
-              />
-            ))}
-
-            {Array.from({ length: project.requestedImageCount }, (_, index) => {
-              const image = images.find((img) => img.index === index);
-              if (image) {
-                return (
-                  <ProjectImageTile
-                    key={`generated-${index}`}
-                    status="loaded"
-                    src={imageUrl(image.thumbnailUrl)}
-                    label={`Generated image ${index + 1}`}
-                    isChecked={selectedGeneratedIds.has(image.imageId)}
-                    onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
-                    isRefining={refiningImageIds.has(image.imageId)}
-                    isConcept={showMaterials && image.imageId === concept?.conceptImageId}
-                    onSetConcept={showMaterials ? () => void handleSetConcept(image.imageId) : undefined}
-                    onClick={() => openLightbox(image.imageId)}
+          {inReview ? (
+            <section className={styles.stage} aria-label="Concept image">
+              {reviewImage ? (
+                <div className={styles.stageImage}>
+                  <MaterialOverlay
+                    src={imageUrl(reviewImage.url)}
+                    alt="Concept image"
+                    materials={concept?.materials ?? []}
+                    activeId={activeMaterialId}
+                    selectedId={selectedMaterialId}
+                    onHover={setHoveredMaterialId}
+                    onSelect={setSelectedMaterialId}
                   />
-                );
-              }
-              if (failedIndices.has(index)) {
-                return (
-                  <ProjectImageTile
-                    key={`generated-${index}`}
-                    status="failed"
-                    label={`Image ${index + 1}`}
-                    onRetry={() => projectId && generateIndex(projectId, index)}
-                  />
-                );
-              }
-              return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
-            })}
+                  {isLabelling && (
+                    <div className={styles.stageBusy}>
+                      <Spinner />
+                      <span>Tracing the materials...</span>
+                    </div>
+                  )}
+                </div>
+              ) : failedIndices.has(0) ? (
+                <div className={styles.stagePlaceholder}>
+                  <span>The concept image failed to generate.</span>
+                  <button type="button" className={styles.stageRetry} onClick={() => projectId && generateIndex(projectId, 0)}>
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.stagePlaceholder}>
+                  <Spinner />
+                  <span>{showMaterials ? "Rendering the concept image..." : "Choosing the main materials..."}</span>
+                </div>
+              )}
+              <p className={styles.stageHint}>
+                One image first, to agree the materials. Hover or click a material to see where it goes - your{" "}
+                {project.imageCountPerBatch === 1 ? "image is" : `${project.imageCountPerBatch} images are`} generated after you approve.
+              </p>
+            </section>
+          ) : (
+            <div className={styles.grid}>
+              {uploadedImages.map((ref) => (
+                <ProjectImageTile
+                  key={`reference-${ref.index}`}
+                  status="loaded"
+                  src={imageUrl(ref.thumbnailUrl)}
+                  label={`Reference photo ${ref.index + 1}`}
+                  isChecked={selectedReferenceIndices.has(ref.index)}
+                  onToggleCheck={() => toggleReferenceSelection(ref.index)}
+                  isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
+                  onClick={() => openLightbox(`reference-${ref.index}`)}
+                />
+              ))}
 
-            {Array.from({ length: pendingNewImageCount }, (_, i) => (
-              <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
-            ))}
-          </div>
+              {Array.from({ length: project.requestedImageCount }, (_, index) => {
+                const image = images.find((img) => img.index === index);
+                if (image) {
+                  return (
+                    <ProjectImageTile
+                      key={`generated-${index}`}
+                      status="loaded"
+                      src={imageUrl(image.thumbnailUrl)}
+                      label={`Generated image ${index + 1}`}
+                      isChecked={selectedGeneratedIds.has(image.imageId)}
+                      onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
+                      isRefining={refiningImageIds.has(image.imageId)}
+                      isConcept={showMaterials && image.imageId === concept?.conceptImageId}
+                      onSetConcept={showMaterials ? () => void handleSetConcept(image.imageId) : undefined}
+                      onClick={() => openLightbox(image.imageId)}
+                    />
+                  );
+                }
+                if (failedIndices.has(index)) {
+                  return (
+                    <ProjectImageTile
+                      key={`generated-${index}`}
+                      status="failed"
+                      label={`Image ${index + 1}`}
+                      onRetry={() => projectId && generateIndex(projectId, index)}
+                    />
+                  );
+                }
+                return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
+              })}
 
-          {generatingIndices.size === 0 && (
+              {Array.from({ length: pendingNewImageCount }, (_, i) => (
+                <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
+              ))}
+            </div>
+          )}
+
+          {generatingIndices.size === 0 && !inReview && (
             <form className={styles.refineBar} onSubmit={handleEdit}>
               <div className={styles.refineTarget}>
                 {hasSelection
@@ -720,16 +843,50 @@ export function ProjectPage() {
           <div className={styles.side}>
             <MaterialsPanel
               concept={concept}
-              conceptImageSrc={conceptImage ? imageUrl(conceptImage.thumbnailUrl) : null}
+              conceptImageSrc={!inReview && conceptImage ? imageUrl(conceptImage.thumbnailUrl) : null}
               hasGeneratedImages={images.length > 0}
               isLabelling={isLabelling}
+              hoveredId={hoveredMaterialId}
+              selectedId={selectedMaterialId}
+              onHover={setHoveredMaterialId}
+              onSelect={setSelectedMaterialId}
               onRename={handleRenameMaterial}
               onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}
+              review={
+                inReview
+                  ? {
+                      canApprove: reviewImage != null && !isLabelling && generatingIndices.size === 0,
+                      isBusy: isApproving || isRetryingConcept,
+                      onApprove: () => {
+                        setApproveError(null);
+                        setIsApproveOpen(true);
+                      },
+                      onRetry: () => void handleRetryConcept(),
+                    }
+                  : undefined
+              }
             />
             {conceptError && <ErrorBanner error={conceptError} onDismiss={() => setConceptError(null)} />}
           </div>
         )}
       </div>
+
+      {isApproveOpen && (
+        <ApproveConceptDialog
+          models={catalog.models}
+          maxImages={catalog.maxGeneratedImages}
+          initial={{
+            imageCount: Math.min(project.imageCountPerBatch || 1, catalog.maxGeneratedImages),
+            modelKey: project.model.key,
+            imageSize: project.imageSize,
+          }}
+          scene={{ aspectRatio: project.aspectRatio, timeOfDay: project.timeOfDay, weather: project.weather, location: project.location }}
+          isSubmitting={isApproving}
+          error={approveError}
+          onConfirm={(settings) => void handleApproveConcept(settings)}
+          onCancel={() => setIsApproveOpen(false)}
+        />
+      )}
 
       {lightboxIndex !== null && (
         <Lightbox

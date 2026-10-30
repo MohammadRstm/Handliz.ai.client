@@ -1,5 +1,6 @@
 import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./client";
 import type {
+  ApproveConceptResponse,
   ProjectDetailResponse,
   ProjectListResponse,
   DeleteProjectImagesResponse,
@@ -173,4 +174,19 @@ export function setConceptImage(projectId: string, imageId: string, accessToken:
  */
 export function labelConceptImage(projectId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
   return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials/label`, {}, { accessToken, signal });
+}
+
+/** Approves the material concept and opens the batch, with the settings confirmed in the approval step. */
+export function approveConcept(
+  projectId: string,
+  settings: { imageCount: number; modelKey: string; imageSize: string },
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<ApproveConceptResponse> {
+  return apiPostJson<ApproveConceptResponse>(`${BASE_PATH}/${projectId}/concept/approve`, settings, { accessToken, signal });
+}
+
+/** Discards an unapproved concept (its image, materials and prompt) so it can be generated again. */
+export function retryConcept(projectId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
+  return apiPostJson<SuccessResponse>(`${BASE_PATH}/${projectId}/concept/retry`, {}, { accessToken, signal });
 }
