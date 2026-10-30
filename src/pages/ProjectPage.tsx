@@ -20,6 +20,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
 import { ApproveConceptDialog, type ApproveSettings } from "../components/ApproveConceptDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
+import { MaterialAreaEditor } from "../components/MaterialAreaEditor";
 import { MaterialOverlay, type DotStyle } from "../components/MaterialOverlay";
 import { MaterialsPanel } from "../components/MaterialsPanel";
 import { ModelPicker } from "../components/ModelPicker";
@@ -129,6 +130,7 @@ export function ProjectPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [approveError, setApproveError] = useState<Error | null>(null);
   const [isRetryingConcept, setIsRetryingConcept] = useState(false);
+  const [isAreaEditorOpen, setIsAreaEditorOpen] = useState(false);
 
   useEffect(() => {
     conceptRef.current = concept;
@@ -413,6 +415,17 @@ export function ProjectPage() {
       throw err;
     }
   };
+
+  // Throws so the editor can show the save as failed; the result keeps the panel in step.
+  const handleSaveAreas = useCallback(
+    async (materialId: string, polygons: [number, number][][]) => {
+      if (!projectId || !accessToken) return;
+      const updated = await projectsApi.updateMaterialAreas(projectId, materialId, polygons, accessToken);
+      setConcept(updated);
+      conceptRef.current = updated;
+    },
+    [projectId, accessToken],
+  );
 
   const handleSetConcept = async (imageId: string) => {
     if (!projectId || !accessToken || isLabelling) return;
@@ -872,6 +885,14 @@ export function ProjectPage() {
               onRename={handleRenameMaterial}
               dotStyle={dotStyle}
               onDotStyleChange={changeDotStyle}
+              onEditAreas={
+                concept.conceptLabelled && conceptImage && !isLabelling
+                  ? () => {
+                      setHoveredMaterialId(null);
+                      setIsAreaEditorOpen(true);
+                    }
+                  : undefined
+              }
               onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}
               review={
                 inReview
@@ -891,6 +912,17 @@ export function ProjectPage() {
           </div>
         )}
       </div>
+
+      {isAreaEditorOpen && concept && conceptImage && (
+        <MaterialAreaEditor
+          imageSrc={imageUrl(conceptImage.url)}
+          materials={concept.materials}
+          dotStyle={dotStyle}
+          initialMaterialId={selectedMaterialId}
+          onSave={handleSaveAreas}
+          onClose={() => setIsAreaEditorOpen(false)}
+        />
+      )}
 
       {isApproveOpen && (
         <ApproveConceptDialog

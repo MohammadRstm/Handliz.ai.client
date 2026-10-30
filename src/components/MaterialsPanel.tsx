@@ -28,6 +28,8 @@ interface MaterialsPanelProps {
   /** How the dots are laid out - owned by the page so the full-size review image follows the same switch. */
   dotStyle: DotStyle;
   onDotStyleChange: (style: DotStyle) => void;
+  /** Opens the area editor; omitted until the concept image is labelled. */
+  onEditAreas?: () => void;
   /** Present only while the concept awaits approval: renders the Approve / Try again actions. */
   review?: {
     canApprove: boolean;
@@ -56,6 +58,7 @@ export function MaterialsPanel({
   onOpenConceptImage,
   dotStyle,
   onDotStyleChange,
+  onEditAreas,
   review,
 }: MaterialsPanelProps) {
   const [labelsHidden, setLabelsHidden] = useState(false);
@@ -71,6 +74,12 @@ export function MaterialsPanel({
           </button>
         )}
       </div>
+
+      {onEditAreas && (
+        <button type="button" className={styles.editAreasButton} onClick={onEditAreas}>
+          Edit areas
+        </button>
+      )}
 
       {concept.conceptLabelled && (
         <div className={styles.segmented} role="group" aria-label="Dot layout">

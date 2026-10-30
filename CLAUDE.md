@@ -52,6 +52,11 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
   (dots only, no outline or tint; measured pixel space so dots stay round; smaller materials masked out of larger ones), enlarging the
   hovered/selected one and dimming the rest. Hover/selection state lives in `ProjectPage` so the list and the image
   stay in sync. Images labelled before outlines existed fall back to filling their box. Colours: `--color-material-1..5`.
+- **Area editor**: "Edit areas" in the panel opens `MaterialAreaEditor` (modal, concept image full size): drag areas or
+  points, double-click an edge to add a point, Delete removes a point then the area, Add area draws a new polygon,
+  Ctrl+Z undoes (history in a ref - StrictMode double-runs state updaters). Each change autosaves, debounced per
+  material, via `PUT /materials/{id}/areas`. Keys are captured at the window so the page's Delete-images shortcut
+  never fires underneath. Overlay only: generation doesn't read the shapes.
 - **Images** are `<img src>` of signed URLs from the API, resolved with `imageUrl()`. Never request or embed base64.
 - **Errors**: every non-2xx throws `ApiError` (`code`, `message`, `stage`, `fieldErrors`, and credit-limit details on `CREDIT_LIMIT`-style errors). Show them via `ErrorBanner`.
 - **Auth calls** use `credentials: "include"` so the refresh cookie flows; authorized calls pass `accessToken` explicitly.
