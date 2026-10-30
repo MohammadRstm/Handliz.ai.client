@@ -20,7 +20,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
 import { ApproveConceptDialog, type ApproveSettings } from "../components/ApproveConceptDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
-import { MaterialOverlay } from "../components/MaterialOverlay";
+import { MaterialOverlay, type DotStyle } from "../components/MaterialOverlay";
 import { MaterialsPanel } from "../components/MaterialsPanel";
 import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
@@ -104,6 +104,24 @@ export function ProjectPage() {
   // showing them, so pointing at a row lights its surfaces on the image and vice versa.
   const [hoveredMaterialId, setHoveredMaterialId] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+
+  // Even grid or scattered dots - a viewing preference, so it is remembered in this
+  // browser only. Storage can be unavailable (private windows), hence the try/catch.
+  const [dotStyle, setDotStyle] = useState<DotStyle>(() => {
+    try {
+      return localStorage.getItem("handliz.dotStyle") === "random" ? "random" : "even";
+    } catch {
+      return "even";
+    }
+  });
+  const changeDotStyle = (style: DotStyle) => {
+    setDotStyle(style);
+    try {
+      localStorage.setItem("handliz.dotStyle", style);
+    } catch {
+      // Not remembered; the choice still applies for this visit.
+    }
+  };
 
   // The review step: a new project renders only its concept image; the batch waits for the
   // user to approve the materials (see the backend's ApproveConceptAsync).
@@ -650,6 +668,7 @@ export function ProjectPage() {
                     selectedId={selectedMaterialId}
                     onHover={setHoveredMaterialId}
                     onSelect={setSelectedMaterialId}
+                    dotStyle={dotStyle}
                   />
                   {isLabelling && (
                     <div className={styles.stageBusy}>
@@ -851,6 +870,8 @@ export function ProjectPage() {
               onHover={setHoveredMaterialId}
               onSelect={setSelectedMaterialId}
               onRename={handleRenameMaterial}
+              dotStyle={dotStyle}
+              onDotStyleChange={changeDotStyle}
               onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}
               review={
                 inReview
