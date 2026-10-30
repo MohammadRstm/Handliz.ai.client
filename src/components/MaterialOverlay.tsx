@@ -1,3 +1,4 @@
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectMaterialDto } from "../api/projectTypes";
 import { materialColor } from "./materialColor";
 import styles from "./MaterialOverlay.module.css";
@@ -7,7 +8,7 @@ interface MaterialOverlayProps {
   src: string;
   alt: string;
   materials: ProjectMaterialDto[];
-  /** Hides the fills and labels; the image stays. */
+  /** Hides the dots and labels; the image stays. */
   hidden?: boolean;
   /** Brightened, with the others dimmed - whichever material is hovered or selected. */
   activeId?: string | null;
@@ -28,6 +29,16 @@ interface Shape {
   area: number;
   /** Chip position as percentages of the image, at the centre of the material's largest polygon. */
   chip: { left: number; top: number };
+}
+
+/**
+ * Dot grid pitch in rendered pixels: about 80 dots across the image, so the pattern reads
+ * the same in the full-width review image as on a large screen, but never closer than 8 px -
+ * at 6 px the ~300 px panel preview turned into a haze rather than dots - or further than
+ * 14 px, where thin surfaces like a fascia get no dots at all.
+ */
+function dotPitch(width: number): number {
+  return Math.min(14, Math.max(8, width / 80));
 }
 
 function polygonArea(points: Point[]): number {
@@ -79,45 +90,115 @@ function toShapes(materials: ProjectMaterialDto[]): Shape[] {
 }
 
 /**
- * A generated image with its concept materials painted over the actual surfaces: each
- * material's outline filled with its colour at low opacity, so the material underneath stays
- * visible, plus a small label chip. Hovering or selecting a material brightens it and dims the
- * rest. Drawn in a 0-1000 viewBox stretched over the image (outlines are normalized the same
- * way), with non-scaling strokes so edges stay crisp at any size. The image itself is never
- * modified - the backend stores only the outlines.
+ * A generated image with its concept materials marked on the actual surfaces as an even
+ * grid of dots in each material's colour - the material underneath stays fully visible
+ * between them - plus a thin outline and a label chip. Hovering or selecting a material
+ * brightens it and dims the rest.
+ *
+ * Drawn in the image's measured pixel space rather than a stretched 0-1000 viewBox: a
+ * stretched viewBox would squash the dots into ellipses and space them differently across
+ * and down. Where a smaller material sits inside a larger one (windows in a wall), the
+ * larger one's dots are masked out of it, so the two grids never overlap. The image itself
+ * is never modified - the backend stores only the outlines.
  */
 export function MaterialOverlay({ src, alt, materials, hidden, activeId, selectedId, onHover, onSelect }: MaterialOverlayProps) {
+  const uid = useId().replace(/:/g, "");
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const observer = new ResizeObserver(() => {
+      if (img.clientWidth > 0 && img.clientHeight > 0) setSize({ width: img.clientWidth, height: img.clientHeight });
+    });
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [src]);
+
   const shapes = toShapes(materials);
   const interactive = onHover != null || onSelect != null;
 
+  const toPoints = (polygon: Point[]) =>
+    size ? polygon.map(([x, y]) => `${(x / 1000) * size.width},${(y / 1000) * size.height}`).join(" ") : "";
+
+  const pitch = size ? dotPitch(size.width) : 10;
+  const radius = Math.max(1.5, pitch * 0.18);
+
   return (
     <div className={styles.wrap} onMouseLeave={() => onHover?.(null)}>
-      <img src={src} alt={alt} className={styles.image} onClick={() => onSelect?.(null)} />
-      {!hidden && shapes.length > 0 && (
+      <img ref={imgRef} src={src} alt={alt} className={styles.image} onClick={() => onSelect?.(null)} />
+      {size && !hidden && shapes.length > 0 && (
         <>
-          <svg className={styles.svg} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
-            {shapes.map(({ material, color, polygons }) => {
+          <svg className={styles.svg} viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
+            <defs>
+              {shapes.map(({ material, color }, i) => (
+                <g key={material.id}>
+                  <pattern id={`${uid}-dots-${i}`} width={pitch} height={pitch} patternUnits="userSpaceOnUse">
+                    <circle cx={pitch / 2} cy={pitch / 2} r={radius} style={{ fill: color }} />
+                  </pattern>
+                  {/* Everything this material covers, minus the smaller materials drawn on top of it. */}
+                  <mask id={`${uid}-mask-${i}`} maskUnits="userSpaceOnUse" x={0} y={0} width={size.width} height={size.height}>
+                    {shapes[i].polygons.map((polygon, k) => (
+                      <polygon key={k} points={toPoints(polygon)} fill="white" />
+                    ))}
+                    {shapes.slice(i + 1).flatMap((smaller) =>
+                      smaller.polygons.map((polygon, k) => (
+                        <polygon key={`${smaller.material.id}-${k}`} points={toPoints(polygon)} fill="black" />
+                      )),
+                    )}
+                  </mask>
+                </g>
+              ))}
+            </defs>
+
+            {shapes.map(({ material, color, polygons }, i) => {
               const isActive = activeId === material.id;
               const isDimmed = activeId != null && !isActive;
               return (
                 <g
                   key={material.id}
                   className={`${styles.material} ${interactive ? styles.interactive : ""}`}
-                  style={{
-                    fill: color,
-                    stroke: color,
-                    fillOpacity: isActive ? 0.55 : isDimmed ? 0.1 : 0.28,
-                    strokeOpacity: isActive || selectedId === material.id ? 1 : isDimmed ? 0.25 : 0.7,
-                    strokeWidth: isActive ? 2.5 : 1.25,
-                  }}
+                  style={{ opacity: isDimmed ? 0.3 : 1 }}
                   onMouseEnter={() => onHover?.(material.id)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect?.(selectedId === material.id ? null : material.id);
                   }}
                 >
-                  {polygons.map((points, i) => (
-                    <polygon key={i} points={points.map(([x, y]) => `${x},${y}`).join(" ")} vectorEffect="non-scaling-stroke" />
+                  {/* The dots. A faint wash only on the active material, so it still reads as lit. */}
+                  <rect
+                    x={0}
+                    y={0}
+                    width={size.width}
+                    height={size.height}
+                    mask={`url(#${uid}-mask-${i})`}
+                    style={{ fill: `url(#${uid}-dots-${i})`, opacity: isActive ? 1 : 0.85 }}
+                    className={styles.dots}
+                  />
+                  {isActive && (
+                    <rect
+                      x={0}
+                      y={0}
+                      width={size.width}
+                      height={size.height}
+                      mask={`url(#${uid}-mask-${i})`}
+                      style={{ fill: color, opacity: 0.18 }}
+                      className={styles.dots}
+                    />
+                  )}
+                  {/* Transparent hit areas and a thin edge, so the dotted region keeps a clear boundary. */}
+                  {polygons.map((polygon, k) => (
+                    <polygon
+                      key={k}
+                      points={toPoints(polygon)}
+                      className={styles.edge}
+                      style={{
+                        stroke: color,
+                        strokeOpacity: isActive || selectedId === material.id ? 0.95 : 0.45,
+                        strokeWidth: isActive ? 2 : 1,
+                      }}
+                    />
                   ))}
                 </g>
               );
