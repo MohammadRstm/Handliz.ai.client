@@ -21,14 +21,25 @@
 }
 
 .material {
+  transition: opacity 140ms ease;
+}
+
+/* The dot layers are full-image rects clipped by a mask, so they must never take the
+   pointer - the outline polygons below are the hit areas. */
+.dots {
+  pointer-events: none;
+}
+
+.edge {
+  fill: transparent;
   transition:
-    fill-opacity 140ms ease,
-    stroke-opacity 140ms ease;
+    stroke-opacity 140ms ease,
+    stroke-width 140ms ease;
 }
 
 /* The SVG itself ignores the pointer so empty image areas stay clickable; only the
-   painted surfaces take hover and clicks. */
-.interactive {
+   marked surfaces take hover and clicks (a transparent fill still counts as painted). */
+.interactive .edge {
   pointer-events: visiblePainted;
   cursor: pointer;
 }
