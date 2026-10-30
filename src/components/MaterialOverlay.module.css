@@ -30,16 +30,14 @@
   pointer-events: none;
 }
 
-.edge {
+.hitArea {
   fill: transparent;
-  transition:
-    stroke-opacity 140ms ease,
-    stroke-width 140ms ease;
+  stroke: none;
 }
 
 /* The SVG itself ignores the pointer so empty image areas stay clickable; only the
    marked surfaces take hover and clicks (a transparent fill still counts as painted). */
-.interactive .edge {
+.interactive .hitArea {
   pointer-events: visiblePainted;
   cursor: pointer;
 }
