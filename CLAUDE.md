@@ -49,7 +49,7 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
   read-only) → `/concept/approve` → one `/images/{i}` per new slot; **Try again** → `/concept/retry` and the prompt
   step runs again. Projects with no materials, and all older ones, are already approved and work as before.
 - **Material overlay**: `MaterialOverlay` marks each material's polygons with an even dot grid (pitch ~width/80, 8-14 px) over the untouched image
-  (drawn in measured pixel space so dots stay round; smaller materials are masked out of larger ones), brightening the
+  (dots only, no outline or tint; measured pixel space so dots stay round; smaller materials masked out of larger ones), enlarging the
   hovered/selected one and dimming the rest. Hover/selection state lives in `ProjectPage` so the list and the image
   stay in sync. Images labelled before outlines existed fall back to filling their box. Colours: `--color-material-1..5`.
 - **Images** are `<img src>` of signed URLs from the API, resolved with `imageUrl()`. Never request or embed base64.

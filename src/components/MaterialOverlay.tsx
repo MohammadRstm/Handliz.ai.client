@@ -92,8 +92,8 @@ function toShapes(materials: ProjectMaterialDto[]): Shape[] {
 /**
  * A generated image with its concept materials marked on the actual surfaces as an even
  * grid of dots in each material's colour - the material underneath stays fully visible
- * between them - plus a thin outline and a label chip. Hovering or selecting a material
- * brightens it and dims the rest.
+ * between them - and a label chip. No outline and no tint behind the dots. Hovering or
+ * selecting a material brightens it (its dots grow) and dims the rest.
  *
  * Drawn in the image's measured pixel space rather than a stretched 0-1000 viewBox: a
  * stretched viewBox would squash the dots into ellipses and space them differently across
@@ -135,7 +135,8 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
               {shapes.map(({ material, color }, i) => (
                 <g key={material.id}>
                   <pattern id={`${uid}-dots-${i}`} width={pitch} height={pitch} patternUnits="userSpaceOnUse">
-                    <circle cx={pitch / 2} cy={pitch / 2} r={radius} style={{ fill: color }} />
+                    {/* The active material's dots grow a little - its only emphasis, since it has no outline or wash. */}
+                    <circle cx={pitch / 2} cy={pitch / 2} r={activeId === material.id ? radius * 1.4 : radius} style={{ fill: color }} />
                   </pattern>
                   {/* Everything this material covers, minus the smaller materials drawn on top of it. */}
                   <mask id={`${uid}-mask-${i}`} maskUnits="userSpaceOnUse" x={0} y={0} width={size.width} height={size.height}>
@@ -152,53 +153,33 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
               ))}
             </defs>
 
-            {shapes.map(({ material, color, polygons }, i) => {
+            {shapes.map(({ material, polygons }, i) => {
               const isActive = activeId === material.id;
               const isDimmed = activeId != null && !isActive;
               return (
                 <g
                   key={material.id}
                   className={`${styles.material} ${interactive ? styles.interactive : ""}`}
-                  style={{ opacity: isDimmed ? 0.3 : 1 }}
+                  style={{ opacity: isActive ? 1 : isDimmed ? 0.25 : 0.85 }}
                   onMouseEnter={() => onHover?.(material.id)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect?.(selectedId === material.id ? null : material.id);
                   }}
                 >
-                  {/* The dots. A faint wash only on the active material, so it still reads as lit. */}
+                  {/* Dots only - no outline and no wash behind them, by request. */}
                   <rect
                     x={0}
                     y={0}
                     width={size.width}
                     height={size.height}
                     mask={`url(#${uid}-mask-${i})`}
-                    style={{ fill: `url(#${uid}-dots-${i})`, opacity: isActive ? 1 : 0.85 }}
+                    style={{ fill: `url(#${uid}-dots-${i})` }}
                     className={styles.dots}
                   />
-                  {isActive && (
-                    <rect
-                      x={0}
-                      y={0}
-                      width={size.width}
-                      height={size.height}
-                      mask={`url(#${uid}-mask-${i})`}
-                      style={{ fill: color, opacity: 0.18 }}
-                      className={styles.dots}
-                    />
-                  )}
-                  {/* Transparent hit areas and a thin edge, so the dotted region keeps a clear boundary. */}
+                  {/* Invisible hit areas, so hovering anywhere on the surface - not just a dot - finds it. */}
                   {polygons.map((polygon, k) => (
-                    <polygon
-                      key={k}
-                      points={toPoints(polygon)}
-                      className={styles.edge}
-                      style={{
-                        stroke: color,
-                        strokeOpacity: isActive || selectedId === material.id ? 0.95 : 0.45,
-                        strokeWidth: isActive ? 2 : 1,
-                      }}
-                    />
+                    <polygon key={k} points={toPoints(polygon)} className={styles.hitArea} />
                   ))}
                 </g>
               );
