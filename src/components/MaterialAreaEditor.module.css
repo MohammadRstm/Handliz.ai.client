@@ -1,0 +1,247 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.editor {
+  width: min(1440px, 100%);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The image keeps its own aspect ratio; the edit layer sits exactly on top of it. */
+.imageWrap {
+  position: relative;
+  width: 100%;
+  user-select: none;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.drawing {
+  cursor: crosshair;
+}
+
+.otherArea {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.area {
+  fill: currentColor;
+  fill-opacity: 0.08;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  cursor: move;
+}
+
+.areaSelected {
+  fill-opacity: 0.18;
+  stroke-dasharray: none;
+  stroke-width: 2;
+}
+
+.edge {
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: copy;
+}
+
+.handle {
+  fill: #fff;
+  stroke: currentColor;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.handleSelected {
+  fill: currentColor;
+  stroke: #fff;
+}
+
+.drawingLine {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.drawingStart {
+  fill: currentColor;
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.sidebar {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.materials {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.material {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.materialActive {
+  border-color: var(--material-color);
+  box-shadow: inset 3px 0 0 var(--material-color);
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--material-color);
+  color: var(--color-material-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.materialName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolActive {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: var(--color-accent);
+}
+
+.help {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.statusError {
+  color: var(--color-danger);
+}
+
+.done {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Below this the sidebar moves under the image. */
+@media (max-width: 900px) {
+  .editor {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar {
+    flex: none;
+  }
+}

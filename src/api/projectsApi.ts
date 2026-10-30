@@ -1,4 +1,4 @@
-import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson } from "./client";
+import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson, apiPutJson } from "./client";
 import type {
   ApproveConceptResponse,
   ProjectDetailResponse,
@@ -189,4 +189,19 @@ export function approveConcept(
 /** Discards an unapproved concept (its image, materials and prompt) so it can be generated again. */
 export function retryConcept(projectId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
   return apiPostJson<SuccessResponse>(`${BASE_PATH}/${projectId}/concept/retry`, {}, { accessToken, signal });
+}
+
+/**
+ * Replaces one material's areas on the concept image with the user's edit - polygons of
+ * [y, x] points, 0-1000. An empty list marks it as not in view. Overlay only: generation
+ * doesn't read these shapes.
+ */
+export function updateMaterialAreas(
+  projectId: string,
+  materialId: string,
+  polygons: [number, number][][],
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<ProjectMaterialsResponse> {
+  return apiPutJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials/${materialId}/areas`, { polygons }, { accessToken, signal });
 }
