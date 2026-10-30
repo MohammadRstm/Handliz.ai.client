@@ -105,6 +105,8 @@
 .checkBadgeChecked {
   background: var(--color-accent);
   border-color: var(--color-accent);
+  /* The badge's default white checkmark would vanish on a white accent. */
+  color: var(--color-accent-contrast);
 }
 
 .conceptBadge {
