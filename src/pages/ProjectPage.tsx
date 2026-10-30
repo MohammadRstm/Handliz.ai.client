@@ -527,11 +527,11 @@ export function ProjectPage() {
   };
 
   const hasSelection = selectedGeneratedIds.size > 0 || selectedReferenceIndices.size > 0;
-  // Mirrors the backend's own branch decision (EditProjectImagesAsync): any uploaded/source
-  // image in the selection re-invokes the full GPT -> Gemini pipeline, which is a
-  // meaningful action on its own - free text is only required for the Gemini-only refine
-  // branch, which has no other action to take.
-  const willUseGpt = selectedReferenceIndices.size > 0;
+  // Mirrors the backend's own branch decision (EditProjectImagesAsync): a selected
+  // uploaded photo, or nothing selected at all, means a new batch of images - meaningful
+  // on its own, so no text is required. Only selected generated images are edited in place,
+  // and that is the one case needing an instruction (or a changed parameter).
+  const willUseGpt = selectedReferenceIndices.size > 0 || !hasSelection;
   // A parameter actually differing from the project's current persisted value is itself a
   // request to update the photo, same as typing a change would be - mirrors the backend's
   // own hasParamChanges check in EditProjectImagesAsync. ImageCount is deliberately excluded:
@@ -556,8 +556,7 @@ export function ProjectPage() {
     if (willUseGpt) {
       setPendingNewImageCount(editImageCount);
     } else {
-      const targetIds = selectedGeneratedIds.size > 0 ? selectedGeneratedIds : new Set(images.map((img) => img.imageId));
-      setRefiningImageIds(targetIds);
+      setRefiningImageIds(new Set(selectedGeneratedIds));
     }
     try {
       const response = await projectsApi.editImages(
@@ -764,10 +763,10 @@ export function ProjectPage() {
             <form className={styles.refineBar} onSubmit={handleEdit}>
               <div className={styles.refineTarget}>
                 {hasSelection
-                  ? `Editing ${selectedGeneratedIds.size + selectedReferenceIndices.size} selected image(s) · Press Delete to remove`
-                  : images.length > 0
-                    ? "Editing all recently generated images"
-                    : "Select a photo above, or attach a new one, to generate images"}
+                  ? selectedReferenceIndices.size > 0
+                    ? `Generating ${editImageCount} new image(s) from the selected photo(s) · Press Delete to remove`
+                    : `Editing ${selectedGeneratedIds.size} selected image(s) · Press Delete to remove`
+                  : `Generating ${editImageCount} new image(s) from your prompt and settings · Select images to edit them instead`}
               </div>
               <div className={styles.refineInputRow}>
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
@@ -787,7 +786,11 @@ export function ProjectPage() {
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                   placeholder={
-                    hasSelection ? "Edit only the selected images..." : "Describe an edit to apply to your recent images..."
+                    !hasSelection
+                      ? "Describe the new images, or leave empty for more of the same..."
+                      : selectedReferenceIndices.size > 0
+                        ? "Optional: describe what to change..."
+                        : "Describe the edit to the selected images..."
                   }
                   maxLength={MAX_INSTRUCTION_LENGTH}
                   disabled={isEditing || isDeleting}
@@ -861,7 +864,7 @@ export function ProjectPage() {
                 </Dropdown>
 
                 <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing || isDeleting}>
-                  {isEditing ? <Spinner /> : "Send"}
+                  {isEditing ? <Spinner /> : willUseGpt ? "Generate" : "Send"}
                 </button>
               </div>
               {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
