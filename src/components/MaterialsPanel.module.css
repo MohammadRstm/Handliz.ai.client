@@ -36,13 +36,22 @@
   position: relative;
 }
 
-.previewButton {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: none;
+.expandButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
   cursor: zoom-in;
+}
+
+.expandButton:hover {
+  border-color: var(--color-accent);
 }
 
 .labelling {
@@ -87,14 +96,30 @@
   background: var(--color-surface);
 }
 
-.row:hover,
+.row {
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+/* Lit in the material's own colour, matching its brightened fill on the image. */
+.rowActive,
 .row:focus-within {
-  border-color: var(--color-accent);
+  border-color: var(--row-color);
+  background: color-mix(in srgb, var(--row-color) 8%, var(--color-surface));
+}
+
+.rowSelected {
+  border-color: var(--row-color);
+  box-shadow: inset 3px 0 0 var(--row-color);
 }
 
 .chip {
   flex-shrink: 0;
   margin-top: 5px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
   padding: 2px 6px;
   border-radius: 5px;
   color: var(--color-material-text);
@@ -142,4 +167,46 @@
 
 .missing {
   color: var(--color-warning-text);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.approveButton {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.approveButton:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.retryButton {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.approveButton:disabled,
+.retryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -41,11 +41,17 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
 
 - **Starting a project**: `POST /api/projects` returns immediately → navigate to `/projects/:id` → fire `/prompt` and `/title` independently → once the prompt resolves, fire one `/images/{index}` request **per image in parallel**, each filling its own loading placeholder as it completes.
 - **Editing in project**: selection drives the backend branch (selected uploaded/reference image → GPT re-prompt + new images appended; otherwise Gemini edits selected/all generated images in place). The UI enables Send on an instruction *or* a parameter change alone, mirroring the backend rule — keep these in sync.
-- **Material concept**: the first `/prompt` also picks up to 5 materials (M1–M5); `ProjectPage` fetches them right after,
-  then calls `/materials/label` once the first image lands (that image becomes the concept server-side) and after
-  "Set as concept". `MaterialsPanel` (right column, stacks under the grid below 1100px) shows the concept image with
-  `MaterialOverlay` (boxes 0–1000 → measured pixel space, chip + arrow) and text-only name inputs saved on blur/Enter via
-  PATCH. Projects with no materials show no panel. Label colours are `--color-material-1..5`.
+- **Concept review**: a new project opens with only slot 0. `/prompt` also picks up to 5 materials (M1–M5); the page then
+  re-reads the project and renders just the concept image, shown full width in place of the grid while
+  `conceptApproved` is false. `/materials/label` traces the materials as polygons once that image lands.
+  `MaterialsPanel` (right column, stacks under the grid below 1100px) lists them with text-only name inputs
+  (saved on blur/Enter) plus **Approve materials** → `ApproveConceptDialog` (count / model / size, scene shown
+  read-only) → `/concept/approve` → one `/images/{i}` per new slot; **Try again** → `/concept/retry` and the prompt
+  step runs again. Projects with no materials, and all older ones, are already approved and work as before.
+- **Material overlay**: `MaterialOverlay` fills each material's polygons see-through over the untouched image
+  (0–1000 SVG viewBox, non-scaling strokes, larger surfaces drawn first so windows sit on top), brightening the
+  hovered/selected one and dimming the rest. Hover/selection state lives in `ProjectPage` so the list and the image
+  stay in sync. Images labelled before outlines existed fall back to filling their box. Colours: `--color-material-1..5`.
 - **Images** are `<img src>` of signed URLs from the API, resolved with `imageUrl()`. Never request or embed base64.
 - **Errors**: every non-2xx throws `ApiError` (`code`, `message`, `stage`, `fieldErrors`, and credit-limit details on `CREDIT_LIMIT`-style errors). Show them via `ErrorBanner`.
 - **Auth calls** use `credentials: "include"` so the refresh cookie flows; authorized calls pass `accessToken` explicitly.
