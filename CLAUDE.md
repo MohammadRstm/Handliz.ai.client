@@ -40,7 +40,7 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
 ## Key flows
 
 - **Starting a project**: `POST /api/projects` returns immediately → navigate to `/projects/:id` → fire `/prompt` and `/title` independently → once the prompt resolves, fire one `/images/{index}` request **per image in parallel**, each filling its own loading placeholder as it completes.
-- **Editing in project**: selection drives the backend branch (selected uploaded/reference image → GPT re-prompt + new images appended; otherwise Gemini edits selected/all generated images in place). The UI enables Send on an instruction *or* a parameter change alone, mirroring the backend rule — keep these in sync.
+- **Editing in project**: selection drives the backend branch (selected uploaded/reference image, or nothing selected → a new batch of images appended; only generated images selected → Gemini edits exactly those in place). The UI enables Send on an instruction *or* a parameter change alone, mirroring the backend rule — keep these in sync.
 - **Concept review**: a new project opens with only slot 0. `/prompt` also picks up to 5 materials (M1–M5); the page then
   re-reads the project and renders just the concept image, shown full width in place of the grid while
   `conceptApproved` is false. `/materials/label` traces the materials as polygons once that image lands.
