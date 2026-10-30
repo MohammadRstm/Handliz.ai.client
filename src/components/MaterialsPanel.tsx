@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ProjectMaterialDto, ProjectMaterialsResponse } from "../api/projectTypes";
 import { materialColor } from "./materialColor";
-import { MaterialOverlay } from "./MaterialOverlay";
+import { MaterialOverlay, type DotStyle } from "./MaterialOverlay";
 import { Spinner } from "./Spinner";
 import styles from "./MaterialsPanel.module.css";
 
@@ -25,6 +25,9 @@ interface MaterialsPanelProps {
   /** Resolves once the rename is saved; rejects to put the old name back. */
   onRename: (materialId: string, name: string) => Promise<void>;
   onOpenConceptImage?: () => void;
+  /** How the dots are laid out - owned by the page so the full-size review image follows the same switch. */
+  dotStyle: DotStyle;
+  onDotStyleChange: (style: DotStyle) => void;
   /** Present only while the concept awaits approval: renders the Approve / Try again actions. */
   review?: {
     canApprove: boolean;
@@ -51,6 +54,8 @@ export function MaterialsPanel({
   onSelect,
   onRename,
   onOpenConceptImage,
+  dotStyle,
+  onDotStyleChange,
   review,
 }: MaterialsPanelProps) {
   const [labelsHidden, setLabelsHidden] = useState(false);
@@ -66,6 +71,22 @@ export function MaterialsPanel({
           </button>
         )}
       </div>
+
+      {concept.conceptLabelled && (
+        <div className={styles.segmented} role="group" aria-label="Dot layout">
+          {(["even", "random"] as const).map((style) => (
+            <button
+              key={style}
+              type="button"
+              className={`${styles.segment} ${dotStyle === style ? styles.segmentActive : ""}`}
+              onClick={() => onDotStyleChange(style)}
+              aria-pressed={dotStyle === style}
+            >
+              {style === "even" ? "Even dots" : "Random dots"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {review && (
         <p className={styles.hint}>
@@ -84,6 +105,7 @@ export function MaterialsPanel({
             selectedId={selectedId}
             onHover={onHover}
             onSelect={onSelect}
+            dotStyle={dotStyle}
           />
           {onOpenConceptImage && (
             <button type="button" className={styles.expandButton} onClick={onOpenConceptImage} title="Open the concept image">

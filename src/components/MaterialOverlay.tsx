@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ProjectMaterialDto } from "../api/projectTypes";
 import { materialColor } from "./materialColor";
 import styles from "./MaterialOverlay.module.css";
@@ -17,7 +17,11 @@ interface MaterialOverlayProps {
   onHover?: (materialId: string | null) => void;
   /** Clicking a material selects it; clicking it again, or empty image, clears the selection. */
   onSelect?: (materialId: string | null) => void;
+  /** "even": a regular grid. "random": the same density, each dot placed at random within its grid cell. */
+  dotStyle?: DotStyle;
 }
+
+export type DotStyle = "even" | "random";
 
 type Point = [number, number];
 
@@ -39,6 +43,46 @@ interface Shape {
  */
 function dotPitch(width: number): number {
   return Math.min(14, Math.max(8, width / 80));
+}
+
+/**
+ * A small seeded PRNG (FNV-1a hash of the seed into mulberry32), so a material's scattered
+ * dots land in the same places on every render - hover re-renders the overlay constantly,
+ * and Math.random would make the dots jump around each time.
+ */
+function seededRandom(seed: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h += 0x6d2b79f5;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Random-looking dots at an even density: one dot per grid cell, placed anywhere inside the
+ * cell. Fully random positions clump in places and leave bare patches in others, which on a
+ * small window can mean no dots at all; one-per-cell keeps every surface covered while
+ * losing the visible rows and columns. Cells cover the material's bounding box on the same
+ * global grid as the even style; the mask trims what falls outside the outline.
+ */
+function scatteredDots(polygons: Point[][], width: number, height: number, pitch: number, seed: string): Point[] {
+  const xs = polygons.flat().map(([x]) => (x / 1000) * width);
+  const ys = polygons.flat().map(([, y]) => (y / 1000) * height);
+  const random = seededRandom(seed);
+  const dots: Point[] = [];
+  for (let cy = Math.floor(Math.min(...ys) / pitch); cy * pitch < Math.max(...ys); cy++) {
+    for (let cx = Math.floor(Math.min(...xs) / pitch); cx * pitch < Math.max(...xs); cx++) {
+      dots.push([(cx + random()) * pitch, (cy + random()) * pitch]);
+    }
+  }
+  return dots;
 }
 
 function polygonArea(points: Point[]): number {
@@ -90,8 +134,8 @@ function toShapes(materials: ProjectMaterialDto[]): Shape[] {
 }
 
 /**
- * A generated image with its concept materials marked on the actual surfaces as an even
- * grid of dots in each material's colour - the material underneath stays fully visible
+ * A generated image with its concept materials marked on the actual surfaces as dots in
+ * each material's colour - an even grid, or scattered at the same density (dotStyle) - the material underneath stays fully visible
  * between them - and a label chip. No outline and no tint behind the dots. Hovering or
  * selecting a material brightens it (its dots grow) and dims the rest.
  *
@@ -101,7 +145,17 @@ function toShapes(materials: ProjectMaterialDto[]): Shape[] {
  * larger one's dots are masked out of it, so the two grids never overlap. The image itself
  * is never modified - the backend stores only the outlines.
  */
-export function MaterialOverlay({ src, alt, materials, hidden, activeId, selectedId, onHover, onSelect }: MaterialOverlayProps) {
+export function MaterialOverlay({
+  src,
+  alt,
+  materials,
+  hidden,
+  activeId,
+  selectedId,
+  onHover,
+  onSelect,
+  dotStyle = "even",
+}: MaterialOverlayProps) {
   const uid = useId().replace(/:/g, "");
   const imgRef = useRef<HTMLImageElement>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
@@ -116,7 +170,7 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
     return () => observer.disconnect();
   }, [src]);
 
-  const shapes = toShapes(materials);
+  const shapes = useMemo(() => toShapes(materials), [materials]);
   const interactive = onHover != null || onSelect != null;
 
   const toPoints = (polygon: Point[]) =>
@@ -124,6 +178,15 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
 
   const pitch = size ? dotPitch(size.width) : 10;
   const radius = Math.max(1.5, pitch * 0.18);
+
+  // Computed once per layout, not per hover: a large wall is a few thousand dots.
+  const scattered = useMemo(
+    () =>
+      dotStyle === "random" && size
+        ? shapes.map(({ material, polygons }) => scatteredDots(polygons, size.width, size.height, pitch, material.id))
+        : null,
+    [dotStyle, shapes, size, pitch],
+  );
 
   return (
     <div className={styles.wrap} onMouseLeave={() => onHover?.(null)}>
@@ -153,7 +216,7 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
               ))}
             </defs>
 
-            {shapes.map(({ material, polygons }, i) => {
+            {shapes.map(({ material, color, polygons }, i) => {
               const isActive = activeId === material.id;
               const isDimmed = activeId != null && !isActive;
               return (
@@ -168,15 +231,23 @@ export function MaterialOverlay({ src, alt, materials, hidden, activeId, selecte
                   }}
                 >
                   {/* Dots only - no outline and no wash behind them, by request. */}
-                  <rect
-                    x={0}
-                    y={0}
-                    width={size.width}
-                    height={size.height}
-                    mask={`url(#${uid}-mask-${i})`}
-                    style={{ fill: `url(#${uid}-dots-${i})` }}
-                    className={styles.dots}
-                  />
+                  {scattered ? (
+                    <g mask={`url(#${uid}-mask-${i})`} className={styles.dots} style={{ fill: color }}>
+                      {scattered[i].map(([x, y], k) => (
+                        <circle key={k} cx={x} cy={y} r={isActive ? radius * 1.4 : radius} />
+                      ))}
+                    </g>
+                  ) : (
+                    <rect
+                      x={0}
+                      y={0}
+                      width={size.width}
+                      height={size.height}
+                      mask={`url(#${uid}-mask-${i})`}
+                      style={{ fill: `url(#${uid}-dots-${i})` }}
+                      className={styles.dots}
+                    />
+                  )}
                   {/* Invisible hit areas, so hovering anywhere on the surface - not just a dot - finds it. */}
                   {polygons.map((polygon, k) => (
                     <polygon key={k} points={toPoints(polygon)} className={styles.hitArea} />
