@@ -8,9 +8,12 @@
   --color-border: #2c2c34;
   --color-text: #f0f0f3;
   --color-text-muted: #9a9aa5;
-  --color-accent: #a78bfa;
-  --color-accent-hover: #c4b5fd;
-  --color-accent-contrast: #14121c;
+  /* Monochrome by request: the accent is white on the near-black UI, with black text on
+     anything filled with it. Hover dims slightly rather than brightening - there's no
+     brighter than white. */
+  --color-accent: #ffffff;
+  --color-accent-hover: #d4d4d8;
+  --color-accent-contrast: #0a0a0a;
   --color-danger: #f87171;
   --color-danger-bg: #2a1414;
   --color-danger-border: #5c2323;
