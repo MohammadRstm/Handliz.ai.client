@@ -34,29 +34,39 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
 - `src/auth/` — `AuthContext` (access token kept **in memory only**, never localStorage; silent refresh on load via the httpOnly refresh cookie), `ProtectedRoute`, Google Identity Services button.
 - `src/usage/` — `UsageContext` (one shared credit-usage snapshot; call `refresh()` after any generation), `UsageRing`, `UsageBar`.
 - `src/pages/` — `HomePage` (new-project composer + paginated project grid), `ProjectPage` (the main workspace, largest file), `LoginPage`, `SignupPage`, `SettingsPage`, `BillingPage`.
-- `src/components/` — `ProjectComposer`, `ImageUploader`, `ProjectImageTile`, `Lightbox`, `ModelPicker`, `AspectRatioPicker`, `Dropdown`, `AccountMenu`, `ErrorBanner`, `Spinner`, `MaterialsPanel` + `MaterialOverlay` (material concept, below), `icons.tsx` (inline SVG icons).
+- `src/components/` — `ProjectComposer`, `ImageUploader`, `ProjectImageTile`, `Lightbox`, `ModelPicker`, `AspectRatioPicker`, `Dropdown`, `AccountMenu`, `ErrorBanner`, `Spinner`, `MaterialsPanel` + `MaterialOverlay` + `MaterialAreaEditor` + `GenerateFromPhotoDialog` (material concept, below), `icons.tsx` (inline SVG icons).
 - `src/constants.ts` — `TIME_OF_DAY_OPTIONS` / `WEATHER_OPTIONS` mirror backend enums exactly; `DEFAULT_LOCATION` fallback text.
 
 ## Key flows
 
-- **Starting a project**: `POST /api/projects` returns immediately → navigate to `/projects/:id` → fire `/prompt` and `/title` independently → once the prompt resolves, fire one `/images/{index}` request **per image in parallel**, each filling its own loading placeholder as it completes.
-- **Editing in project**: selection drives the backend branch (selected uploaded/reference image, or nothing selected → a new batch of images appended; only generated images selected → Gemini edits exactly those in place). The UI enables Send on an instruction *or* a parameter change alone, mirroring the backend rule — keep these in sync.
-- **Concept review**: a new project opens with only slot 0. `/prompt` also picks up to 5 materials (M1–M5); the page then
-  re-reads the project and renders just the concept image, shown full width in place of the grid while
-  `conceptApproved` is false. `/materials/label` traces the materials as polygons once that image lands.
-  `MaterialsPanel` (right column, stacks under the grid below 1100px) lists them with text-only name inputs
-  (saved on blur/Enter) plus **Approve materials** → `ApproveConceptDialog` (count / model / size, scene shown
-  read-only) → `/concept/approve` → one `/images/{i}` per new slot; **Try again** → `/concept/retry` and the prompt
-  step runs again. Projects with no materials, and all older ones, are already approved and work as before.
+- **Project page layout**: three columns - the user's photos on the left (selectable, "+ Add photo"), only the renders
+  in the middle, and the original photo with its materials on the right (`MaterialsPanel`). Below 1100px the photos
+  become a strip on top and the panel stacks under the renders.
+- **Starting a project**: `POST /api/projects` returns immediately with **no image slots** → navigate to `/projects/:id`
+  → fire `/prompt` and `/title` independently. The first photo is the original (`concept.conceptReferenceIndex`).
+- **Material review (on the user's photo)**: `/prompt` picks up to 5 materials; the page re-reads the project, then
+  `/materials/label` maps them on the original photo, shown large in the middle while `conceptApproved` is false.
+  The panel renames (blur/Enter), adds (up to `MAX_MATERIALS` = 8, then opens the area editor already drawing) and
+  deletes materials. **Approve materials** → `/concept/approve` (generates nothing) → `GenerateFromPhotoDialog` (every
+  setting editable) → an ordinary `/edit` selecting the original. "Not now" leaves an empty-state button for later.
+  **Try again** → `/concept/retry` and the prompt step runs again. Projects with no materials are approved at the
+  prompt step, which opens the dialog straight away.
+- **Editing in project**: selection drives the backend branch (selected photo, or nothing selected → a new batch of
+  images appended; only renders selected → Gemini edits exactly those in place). The UI enables Send on an instruction
+  *or* a parameter change alone, mirroring the backend rule — keep these in sync. Each render carries
+  `sourceReferenceIndex`, shown as a "Photo N" badge.
+- **New photos render right away**: each uploaded photo queues an `/edit` selecting it with the current settings.
+  Edits run one at a time (`renderQueue` in `ProjectPage`) - the API numbers new images as it appends them.
+- **Older projects** (materials on a generated image, `conceptImageId`) and open `/images/{index}` slots still work.
 - **Material overlay**: `MaterialOverlay` marks each material's polygons with an even dot grid (pitch ~width/80, 8-14 px) over the untouched image
   (dots only, no outline or tint; measured pixel space so dots stay round; smaller materials masked out of larger ones), enlarging the
   hovered/selected one and dimming the rest. Hover/selection state lives in `ProjectPage` so the list and the image
-  stay in sync. Images labelled before outlines existed fall back to filling their box. Colours: `--color-material-1..5`.
+  stay in sync. Images labelled before outlines existed fall back to filling their box. Colours: `--color-material-1..8`.
 - **Area editor**: "Edit areas" in the panel opens `MaterialAreaEditor` (modal, concept image full size): drag areas or
   points, double-click an edge to add a point, Delete removes a point then the area, Add area draws a new polygon,
   Ctrl+Z undoes (history in a ref - StrictMode double-runs state updaters). Each change autosaves, debounced per
   material, via `PUT /materials/{id}/areas`. Keys are captured at the window so the page's Delete-images shortcut
-  never fires underneath. Overlay only: generation doesn't read the shapes.
+  never fires underneath. The areas steer generation: the API draws them into a material map that GPT reads.
 - **Images** are `<img src>` of signed URLs from the API, resolved with `imageUrl()`. Never request or embed base64.
 - **Errors**: every non-2xx throws `ApiError` (`code`, `message`, `stage`, `fieldErrors`, and credit-limit details on `CREDIT_LIMIT`-style errors). Show them via `ErrorBanner`.
 - **Auth calls** use `credentials: "include"` so the refresh cookie flows; authorized calls pass `accessToken` explicitly.
