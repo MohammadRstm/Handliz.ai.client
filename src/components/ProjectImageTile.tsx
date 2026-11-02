@@ -1,4 +1,4 @@
-import { CheckIcon } from "./icons";
+import { CheckIcon, DownloadIcon } from "./icons";
 import { Spinner } from "./Spinner";
 import styles from "./ProjectImageTile.module.css";
 
@@ -18,6 +18,8 @@ interface ProjectImageTileProps {
   isRefining?: boolean;
   onClick?: () => void;
   onRetry?: () => void;
+  /** Shown on hover: a link that downloads the full-size image (see imageDownloadUrl). */
+  downloadHref?: string;
 }
 
 export function ProjectImageTile({
@@ -31,6 +33,7 @@ export function ProjectImageTile({
   isRefining,
   onClick,
   onRetry,
+  downloadHref,
 }: ProjectImageTileProps) {
   return (
     <div className={`${styles.tile} ${isChecked ? styles.tileSelected : ""}`}>
@@ -47,6 +50,12 @@ export function ProjectImageTile({
       )}
 
       {status === "loaded" && badge && <span className={`${styles.badge} ${badgeAccent ? styles.badgeAccent : ""}`}>{badge}</span>}
+
+      {status === "loaded" && downloadHref && (
+        <a className={styles.downloadButton} href={downloadHref} aria-label={`Download ${label}`} title="Download">
+          <DownloadIcon size={14} />
+        </a>
+      )}
 
       {status === "loaded" && onToggleCheck && (
         <button

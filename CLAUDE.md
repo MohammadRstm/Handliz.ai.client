@@ -40,8 +40,11 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
 ## Key flows
 
 - **Project page layout**: three columns - the user's photos on the left (selectable, "+ Add photo"), only the renders
-  in the middle, and the original photo with its materials on the right (`MaterialsPanel`). Below 1100px the photos
-  become a strip on top and the panel stacks under the renders.
+  in the middle, and the original photo with its materials on the right (`MaterialsPanel`). Either side column can be
+  hidden from the header (remembered in localStorage); they scroll without a visible scrollbar. Below 1100px the photos
+  become a strip on top and the panel stacks under the renders. The title (`ProjectTitle`) sits beside the back arrow:
+  the API's suggestion from the original photo until the user clicks it and renames it (`PATCH /api/projects/{id}`).
+  While reviewing, the original is height-capped to the viewport (`MaterialOverlay`'s `maxHeight`).
 - **Starting a project**: `POST /api/projects` returns immediately with **no image slots** → navigate to `/projects/:id`
   → fire `/prompt` and `/title` independently. The first photo is the original (`concept.conceptReferenceIndex`).
 - **Material review (on the user's photo)**: `/prompt` picks up to 5 materials; the page re-reads the project, then
@@ -55,8 +58,14 @@ The backend must be running at `VITE_API_BASE_URL` (default `http://localhost:50
   images appended; only renders selected → Gemini edits exactly those in place). The UI enables Send on an instruction
   *or* a parameter change alone, mirroring the backend rule — keep these in sync. Each render carries
   `sourceReferenceIndex`, shown as a "Photo N" badge.
-- **New photos render right away**: each uploaded photo queues an `/edit` selecting it with the current settings.
-  Edits run one at a time (`renderQueue` in `ProjectPage`) - the API numbers new images as it appends them.
+- **Added photos wait for Generate**: uploading selects the new photo(s), focuses the input and pre-selects "As image";
+  nothing renders until the user presses Generate.
+- **"As image" aspect ratio** (`AS_IMAGE` in `src/aspectRatio.ts`): a UI-only choice resolved to the supported ratio
+  nearest the photo being rendered (the first selected photo, else the original; measured from thumbnails, which keep
+  their proportions). Requests always carry a concrete ratio. The home composer defaults to it for the original.
+- **Downloads**: each render (tile on hover, and the lightbox) links to `imageDownloadUrl()` - the signed URL with
+  `&download=<name>`; "Download all" fetches `GET /api/projects/{id}/download` with the token and saves the zip
+  (`saveBlob`).
 - **Older projects** (materials on a generated image, `conceptImageId`) and open `/images/{index}` slots still work.
 - **Material overlay**: `MaterialOverlay` marks each material's polygons with an even dot grid (pitch ~width/80, 8-14 px) over the untouched image
   (dots only, no outline or tint; measured pixel space so dots stay round; smaller materials masked out of larger ones), enlarging the

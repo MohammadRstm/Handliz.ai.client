@@ -113,3 +113,36 @@
   background: var(--color-accent);
   color: var(--color-accent-contrast);
 }
+
+/* Hover-only, like the selection badge's hover state - a permanent button on every tile
+   would crowd the grid. */
+.downloadButton {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tile:hover .downloadButton,
+.downloadButton:focus-visible {
+  opacity: 1;
+}
+
+.downloadButton:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+@media (hover: none) {
+  .downloadButton {
+    opacity: 1;
+  }
+}

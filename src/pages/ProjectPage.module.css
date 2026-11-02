@@ -254,6 +254,44 @@
   gap: 24px;
 }
 
+/* Above the renders: their count, and the zip of all of them. */
+.rendersBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: -12px;
+}
+
+.count {
+  margin-left: 4px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.downloadAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.downloadAll:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.downloadAll:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

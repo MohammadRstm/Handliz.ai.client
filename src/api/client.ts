@@ -20,6 +20,15 @@ export function imageUrl(apiRelativeUrl: string): string {
   return `${API_BASE_URL}${apiRelativeUrl}`;
 }
 
+/**
+ * The same signed image URL, served as a download named `name` (the API adds the extension).
+ * A plain link is enough: the image is cross-origin, where <a download> is ignored, so the
+ * API sends it as an attachment instead.
+ */
+export function imageDownloadUrl(apiRelativeUrl: string, name: string): string {
+  return `${imageUrl(apiRelativeUrl)}&download=${encodeURIComponent(name)}`;
+}
+
 /** Thrown for every non-2xx response. Carries the same ApiErrorDetail the backend returns. */
 export class ApiError extends Error {
   readonly code: string;
@@ -76,6 +85,32 @@ export async function apiGet<T>(path: string, options: RequestOptions = {}): Pro
     headers: authHeader(options.accessToken),
   });
   return handleResponse<T>(response);
+}
+
+/** An authorized GET of a file - for downloads that need the bearer token, which a plain link can't send. */
+export async function apiGetBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    signal: options.signal,
+    credentials: "include",
+    headers: authHeader(options.accessToken),
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorBody(response));
+  }
+  return response.blob();
+}
+
+/** Hands a fetched file to the browser's downloads. The blob URL is same-origin, so <a download> names it. */
+export function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoked on the next tick, once the click has handed the URL to the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export async function apiPostJson<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
