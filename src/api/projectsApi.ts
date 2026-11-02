@@ -68,12 +68,17 @@ export function generateProjectPrompt(projectId: string, accessToken: string, si
   return apiPostJson<GeneratePromptResponse>(`${BASE_PATH}/${projectId}/prompt`, {}, { accessToken, signal });
 }
 
-/** Runs the separate, fast, text-only title generation for a project that doesn't have one yet. Idempotent. */
+/** Suggests a title from the project's original photo, for a project that doesn't have one yet. Idempotent. */
 export function generateProjectTitle(projectId: string, accessToken: string, signal?: AbortSignal): Promise<GenerateTitleResponse> {
   return apiPostJson<GenerateTitleResponse>(`${BASE_PATH}/${projectId}/title`, {}, { accessToken, signal });
 }
 
 /** Generates ONE image for a project slot. Call this once per index in parallel - each resolves independently. */
+/** Renames the project - the user's own title replaces the suggested one. */
+export function renameProject(projectId: string, title: string, accessToken: string, signal?: AbortSignal): Promise<GenerateTitleResponse> {
+  return apiPatchJson<GenerateTitleResponse>(`${BASE_PATH}/${projectId}`, { title }, { accessToken, signal });
+}
+
 export function generateProjectImage(
   projectId: string,
   index: number,

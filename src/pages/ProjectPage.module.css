@@ -21,14 +21,23 @@
 }
 
 .header {
-  padding: 18px 24px;
+  padding: 14px 24px;
   border-bottom: 1px solid var(--color-border);
 }
 
+/* Back arrow, then the title and settings beside it, then the actions on the right. */
 .headerTopRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
+}
+
+.titleBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .headerActions {
@@ -65,36 +74,12 @@
   background: var(--color-surface-alt);
 }
 
-.title {
-  margin: 8px 0 2px;
-  font-size: 20px;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-/* Small pulsing dot next to the location-as-placeholder title, shown only while the
-   real (GPT-generated) title is still in flight. */
-.titleLoading {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  animation: titlePulse 1.2s ease-in-out infinite;
-}
-
-@keyframes titlePulse {
-  0%, 100% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 .summary {
   font-size: 12.5px;
   color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Three columns: the user's photos on the left, the renders in the middle and, for projects
