@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ProjectMaterialDto } from "../api/projectTypes";
+import { BackArrowIcon } from "./icons";
 import { materialColor } from "./materialColor";
 import { MaterialOverlay, type DotStyle } from "./MaterialOverlay";
 import styles from "./MaterialAreaEditor.module.css";
@@ -426,7 +427,14 @@ export function MaterialAreaEditor({
         </div>
 
         <aside className={styles.sidebar}>
-          <h2 className={styles.title}>Edit material areas</h2>
+          {/* The way out, where people look for it - "Done" at the bottom and Escape were easy to miss. */}
+          <div className={styles.header}>
+            <button type="button" className={styles.back} onClick={close} title="Back to the project (Esc)">
+              <BackArrowIcon size={16} />
+              Back
+            </button>
+            <h2 className={styles.title}>Edit material areas</h2>
+          </div>
 
           <ul className={styles.materials}>
             {materials.map((m) => (
