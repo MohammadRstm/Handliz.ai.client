@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "./icons";
 import styles from "./Lightbox.module.css";
 
 export interface LightboxItem {
@@ -9,6 +9,8 @@ export interface LightboxItem {
   /** Small variant for the filmstrip, so opening the viewer doesn't fetch every image at full size. */
   thumbnailSrc: string;
   label: string;
+  /** A link that downloads the full-size image (see imageDownloadUrl). */
+  downloadHref?: string;
 }
 
 interface LightboxProps {
@@ -51,6 +53,12 @@ export function Lightbox({ items, activeIndex, onNavigate, onClose }: LightboxPr
 
   return (
     <div className={styles.overlay} onClick={onClose} role="dialog" aria-label={item.label}>
+      {item.downloadHref && (
+        <a className={styles.downloadButton} href={item.downloadHref} onClick={(e) => e.stopPropagation()} title={`Download ${item.label}`}>
+          <DownloadIcon />
+          Download
+        </a>
+      )}
       <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
         ✕
       </button>

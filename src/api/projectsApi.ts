@@ -1,4 +1,4 @@
-import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson, apiPutJson } from "./client";
+import { apiDeleteJson, apiGet, apiGetBlob, apiPatchJson, apiPostForm, apiPostJson, apiPutJson } from "./client";
 import type {
   ProjectDetailResponse,
   ProjectListResponse,
@@ -74,6 +74,11 @@ export function generateProjectTitle(projectId: string, accessToken: string, sig
 }
 
 /** Generates ONE image for a project slot. Call this once per index in parallel - each resolves independently. */
+/** Every generated image of the project as one zip (uploaded photos are left out). 409 NO_RENDERS when there are none. */
+export function downloadRenders(projectId: string, accessToken: string, signal?: AbortSignal): Promise<Blob> {
+  return apiGetBlob(`${BASE_PATH}/${projectId}/download`, { accessToken, signal });
+}
+
 /** Renames the project - the user's own title replaces the suggested one. */
 export function renameProject(projectId: string, title: string, accessToken: string, signal?: AbortSignal): Promise<GenerateTitleResponse> {
   return apiPatchJson<GenerateTitleResponse>(`${BASE_PATH}/${projectId}`, { title }, { accessToken, signal });

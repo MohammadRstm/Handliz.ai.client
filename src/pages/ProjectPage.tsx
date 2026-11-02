@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as projectsApi from "../api/projectsApi";
-import { ApiError, imageUrl } from "../api/client";
+import { ApiError, imageDownloadUrl, imageUrl, saveBlob } from "../api/client";
 import type {
   ProjectDetailResponse,
   EditImagesParams,
@@ -20,7 +20,7 @@ import { ProjectImageTile } from "../components/ProjectImageTile";
 import { ProjectTitle } from "../components/ProjectTitle";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { BackArrowIcon, ChevronUpDownIcon, HamburgerIcon, PanelLeftIcon, PanelRightIcon } from "../components/icons";
+import { BackArrowIcon, ChevronUpDownIcon, DownloadIcon, HamburgerIcon, PanelLeftIcon, PanelRightIcon } from "../components/icons";
 import { GenerateFromPhotoDialog, type GenerateSettings } from "../components/GenerateFromPhotoDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
 import { MaterialAreaEditor } from "../components/MaterialAreaEditor";
@@ -134,6 +134,8 @@ export function ProjectPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<Error | null>(null);
   const [renameError, setRenameError] = useState<Error | null>(null);
+  const [isZipping, setIsZipping] = useState(false);
+  const [zipError, setZipError] = useState<Error | null>(null);
 
   // The project's material concept (see MaterialsPanel). Mirrored into a ref because the
   // callbacks that decide whether to label it are created before it loads.
@@ -378,6 +380,8 @@ export function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadedImages, catalog]);
 
+  // Downloads are named after the project, like the zip's entries ("<title>-03.png").
+  const downloadBase = project?.title ?? project?.location ?? "image";
   const lightboxItems: LightboxItem[] = useMemo(() => {
     const generatedItems: LightboxItem[] = images
       .slice()
@@ -387,17 +391,33 @@ export function ProjectPage() {
         src: imageUrl(img.url),
         thumbnailSrc: imageUrl(img.thumbnailUrl),
         label: generatedLabel(img),
+        downloadHref: imageDownloadUrl(img.url, `${downloadBase}-${String(img.index + 1).padStart(2, "0")}`),
       }));
     const referenceItems: LightboxItem[] = uploadedImages.map((ref) => ({
       id: `reference-${ref.index}`,
       src: imageUrl(ref.url),
       thumbnailSrc: imageUrl(ref.thumbnailUrl),
       label: `Photo ${ref.index + 1}`,
+      downloadHref: imageDownloadUrl(ref.url, `${downloadBase}-photo-${ref.index + 1}`),
     }));
     // Same order as the page shows them (photos on the left first), so stepping through the
     // viewer with the arrows follows the order the user is looking at.
     return [...referenceItems, ...generatedItems];
-  }, [images, uploadedImages]);
+  }, [images, uploadedImages, downloadBase]);
+
+  const handleDownloadAll = async () => {
+    if (!projectId || !accessToken || isZipping) return;
+    setIsZipping(true);
+    setZipError(null);
+    try {
+      const zip = await projectsApi.downloadRenders(projectId, accessToken);
+      saveBlob(zip, `${downloadBase.replace(/[^\p{L}\p{N} _-]/gu, "-").trim() || "renders"}.zip`);
+    } catch (err) {
+      setZipError(toError(err));
+    } finally {
+      setIsZipping(false);
+    }
+  };
 
   const handleSelectModel = (key: string) => {
     setEditModelKey(key);
@@ -985,41 +1005,56 @@ export function ProjectPage() {
               </p>
             </section>
           ) : hasRenders ? (
-            <div className={styles.grid}>
-              {Array.from({ length: project.requestedImageCount }, (_, index) => {
-                const image = images.find((img) => img.index === index);
-                if (image) {
-                  return (
-                    <ProjectImageTile
-                      key={`generated-${index}`}
-                      status="loaded"
-                      src={imageUrl(image.thumbnailUrl)}
-                      label={generatedLabel(image)}
-                      badge={typeof image.sourceReferenceIndex === "number" ? `Photo ${image.sourceReferenceIndex + 1}` : undefined}
-                      isChecked={selectedGeneratedIds.has(image.imageId)}
-                      onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
-                      isRefining={refiningImageIds.has(image.imageId)}
-                      onClick={() => openLightbox(image.imageId)}
-                    />
-                  );
-                }
-                if (failedIndices.has(index)) {
-                  return (
-                    <ProjectImageTile
-                      key={`generated-${index}`}
-                      status="failed"
-                      label={`Image ${index + 1}`}
-                      onRetry={() => projectId && generateIndex(projectId, index)}
-                    />
-                  );
-                }
-                return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
-              })}
+            <>
+              <div className={styles.rendersBar}>
+                <h2 className={styles.columnHeading}>
+                  Renders <span className={styles.count}>{images.length}</span>
+                </h2>
+                {images.length > 0 && (
+                  <button type="button" className={styles.downloadAll} onClick={() => void handleDownloadAll()} disabled={isZipping}>
+                    {isZipping ? <Spinner /> : <DownloadIcon />}
+                    Download all
+                  </button>
+                )}
+              </div>
+              {zipError && <ErrorBanner error={zipError} onDismiss={() => setZipError(null)} />}
+              <div className={styles.grid}>
+                {Array.from({ length: project.requestedImageCount }, (_, index) => {
+                  const image = images.find((img) => img.index === index);
+                  if (image) {
+                    return (
+                      <ProjectImageTile
+                        key={`generated-${index}`}
+                        status="loaded"
+                        src={imageUrl(image.thumbnailUrl)}
+                        label={generatedLabel(image)}
+                        badge={typeof image.sourceReferenceIndex === "number" ? `Photo ${image.sourceReferenceIndex + 1}` : undefined}
+                        isChecked={selectedGeneratedIds.has(image.imageId)}
+                        onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
+                        isRefining={refiningImageIds.has(image.imageId)}
+                        onClick={() => openLightbox(image.imageId)}
+                        downloadHref={imageDownloadUrl(image.url, `${downloadBase}-${String(image.index + 1).padStart(2, "0")}`)}
+                      />
+                    );
+                  }
+                  if (failedIndices.has(index)) {
+                    return (
+                      <ProjectImageTile
+                        key={`generated-${index}`}
+                        status="failed"
+                        label={`Image ${index + 1}`}
+                        onRetry={() => projectId && generateIndex(projectId, index)}
+                      />
+                    );
+                  }
+                  return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
+                })}
 
-              {Array.from({ length: pendingNewImageCount }, (_, i) => (
-                <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
-              ))}
-            </div>
+                {Array.from({ length: pendingNewImageCount }, (_, i) => (
+                  <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
+                ))}
+              </div>
+            </>
           ) : (
             <div className={styles.emptyRenders}>
               <p>No renders yet.</p>
