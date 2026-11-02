@@ -19,7 +19,7 @@ import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPic
 import { ProjectImageTile } from "../components/ProjectImageTile";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
+import { BackArrowIcon, ChevronUpDownIcon, HamburgerIcon, PanelLeftIcon, PanelRightIcon } from "../components/icons";
 import { GenerateFromPhotoDialog, type GenerateSettings } from "../components/GenerateFromPhotoDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
 import { MaterialAreaEditor } from "../components/MaterialAreaEditor";
@@ -31,6 +31,26 @@ import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "..
 import { UsageRing } from "../usage/UsageRing";
 import { useUsage } from "../usage/useUsage";
 import styles from "./ProjectPage.module.css";
+
+/** A remembered on/off viewing preference. Storage can be unavailable (private windows), hence the try/catch. */
+function useStoredFlag(key: string): [boolean, (value: boolean) => void] {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const update = (next: boolean) => {
+    setValue(next);
+    try {
+      localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      // Not remembered; the choice still applies for this visit.
+    }
+  };
+  return [value, update];
+}
 
 function toError(err: unknown): ApiError | Error {
   if (err instanceof ApiError || err instanceof Error) return err;
@@ -131,6 +151,10 @@ export function ProjectPage() {
       return "even";
     }
   });
+  // Either side column can be hidden to give the renders the room - remembered per browser.
+  const [photosHidden, setPhotosHidden] = useStoredFlag("handliz.photosHidden");
+  const [materialsHidden, setMaterialsHidden] = useStoredFlag("handliz.materialsHidden");
+
   const changeDotStyle = (style: DotStyle) => {
     setDotStyle(style);
     try {
@@ -773,13 +797,40 @@ export function ProjectPage() {
   const hasRenders = project.requestedImageCount > 0 || placeholderCount > 0;
 
   return (
-    <div className={`${styles.page} ${showMaterials || inReview ? styles.withMaterials : ""}`}>
+    <div
+      className={[
+        styles.page,
+        showMaterials || inReview ? styles.withMaterials : "",
+        photosHidden ? styles.photosHidden : "",
+        materialsHidden ? styles.materialsHidden : "",
+      ].join(" ")}
+    >
       <header className={styles.header}>
         <div className={styles.headerTopRow}>
           <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
             <BackArrowIcon />
           </Link>
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={`${styles.panelToggle} ${photosHidden ? styles.panelToggleOff : ""}`}
+              onClick={() => setPhotosHidden(!photosHidden)}
+              aria-pressed={!photosHidden}
+              title={photosHidden ? "Show photos" : "Hide photos"}
+            >
+              <PanelLeftIcon />
+            </button>
+            {(showMaterials || inReview) && (
+              <button
+                type="button"
+                className={`${styles.panelToggle} ${materialsHidden ? styles.panelToggleOff : ""}`}
+                onClick={() => setMaterialsHidden(!materialsHidden)}
+                aria-pressed={!materialsHidden}
+                title={materialsHidden ? "Show materials" : "Hide materials"}
+              >
+                <PanelRightIcon />
+              </button>
+            )}
             <UsageRing />
             <AccountMenu />
           </div>
@@ -854,6 +905,7 @@ export function ProjectPage() {
                     onHover={setHoveredMaterialId}
                     onSelect={setSelectedMaterialId}
                     dotStyle={dotStyle}
+                    maxHeight="var(--review-image-max-height)"
                   />
                   {reviewStatus && (
                     <div className={styles.stageBusy}>

@@ -100,7 +100,7 @@
 /* Three columns: the user's photos on the left, the renders in the middle and, for projects
    with materials, the original photo with its materials on the right. */
 .workspace {
-  --photos-column-width: 168px;
+  --photos-column-width: 220px;
   flex: 1;
   display: flex;
   align-items: flex-start;
@@ -117,6 +117,58 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* The side columns scroll on their own but show no scrollbar - a bar on each column's inner
+   edge read as a divider squeezed between the photos and the renders. */
+.photos,
+.side {
+  scrollbar-width: none;
+}
+
+.photos::-webkit-scrollbar,
+.side::-webkit-scrollbar {
+  display: none;
+}
+
+/* Either side column can be hidden from the header, giving the renders the room. */
+.photosHidden .workspace {
+  --photos-column-width: 0px;
+}
+
+.photosHidden .photos {
+  display: none;
+}
+
+/* Doubled up to outrank .withMaterials, which sets the width on the same element. */
+.withMaterials.materialsHidden {
+  --materials-panel-width: 0px;
+}
+
+.materialsHidden .side {
+  display: none;
+}
+
+.panelToggle {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panelToggle:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.panelToggleOff {
+  opacity: 0.45;
 }
 
 .columnHeading {
@@ -232,11 +284,12 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  /* Stops short of the photos column and the materials panel, so it stays centred under the
-     renders. */
-  left: var(--photos-column-width, 0px);
-  right: var(--materials-panel-width, 0px);
-  max-width: 900px;
+  /* Stops short of the photos column and the materials panel by the renders' own 20px gutter,
+     so it stays centred under them - flush to the columns, its borders ran into theirs. */
+  left: calc(var(--photos-column-width, 0px) + 20px);
+  right: calc(var(--materials-panel-width, 0px) + 20px);
+  /* The renders' width: the column's 900px less its 20px padding each side. */
+  max-width: 860px;
   margin: 0 auto;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -422,8 +475,15 @@
   gap: 12px;
 }
 
+/* Hugs the photo, so the busy overlay covers the image and nothing beside it. The cap keeps
+   the whole photo on screen: the viewport less the header, the column's padding and the
+   hint underneath - a tall photo ran past the bottom and had to be scrolled to be seen. */
 .stageImage {
+  --review-image-max-height: calc(100dvh - 190px);
   position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .stageBusy,

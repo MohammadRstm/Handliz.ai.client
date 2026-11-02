@@ -12,6 +12,19 @@
   height: auto;
 }
 
+/* Height-capped (the maxHeight prop): the wrap hugs the image, so the dots - measured from
+   the rendered image - and the rounded corners follow its narrower width. */
+.fitted {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.fitted .image {
+  width: auto;
+  max-width: 100%;
+}
+
 .svg {
   position: absolute;
   inset: 0;

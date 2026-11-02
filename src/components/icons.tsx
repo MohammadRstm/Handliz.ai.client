@@ -118,3 +118,38 @@ export function ChevronRightIcon({ size = 22 }: IconProps) {
     </svg>
   );
 }
+
+/** A window with its left strip marked - shows or hides the photos column. */
+export function PanelLeftIcon({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 3v12" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** A window with its right strip marked - shows or hides the materials column. */
+export function PanelRightIcon({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M11 3v12" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** An arrow down onto a tray - downloads. */
+export function DownloadIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.5v7.5M8 10L4.8 6.8M8 10l3.2-3.2M3 12.5h10"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
