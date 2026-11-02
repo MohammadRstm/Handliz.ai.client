@@ -17,6 +17,7 @@ import { useAuth } from "../auth/useAuth";
 import { AccountMenu } from "../components/AccountMenu";
 import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPicker";
 import { ProjectImageTile } from "../components/ProjectImageTile";
+import { ProjectTitle } from "../components/ProjectTitle";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { BackArrowIcon, ChevronUpDownIcon, HamburgerIcon, PanelLeftIcon, PanelRightIcon } from "../components/icons";
@@ -128,6 +129,7 @@ export function ProjectPage() {
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<Error | null>(null);
+  const [renameError, setRenameError] = useState<Error | null>(null);
 
   // The project's material concept (see MaterialsPanel). Mirrored into a ref because the
   // callbacks that decide whether to label it are created before it loads.
@@ -464,6 +466,18 @@ export function ProjectPage() {
       else next.add(index);
       return next;
     });
+  };
+
+  const handleRename = async (title: string) => {
+    if (!projectId || !accessToken) return;
+    setRenameError(null);
+    try {
+      const renamed = await projectsApi.renameProject(projectId, title, accessToken);
+      setProject((prev) => (prev ? { ...prev, title: renamed.title } : prev));
+    } catch (err) {
+      setRenameError(toError(err));
+      throw err;
+    }
   };
 
   const applyConcept = (updated: ProjectMaterialsResponse) => {
@@ -810,6 +824,12 @@ export function ProjectPage() {
           <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
             <BackArrowIcon />
           </Link>
+          <div className={styles.titleBlock}>
+            <ProjectTitle title={project.title} fallback={project.location} onRename={handleRename} />
+            <div className={styles.summary}>
+              {project.model.displayName} · {project.imageSize} · {project.aspectRatio} · {project.timeOfDay} · {project.weather}
+            </div>
+          </div>
           <div className={styles.headerActions}>
             <button
               type="button"
@@ -835,13 +855,7 @@ export function ProjectPage() {
             <AccountMenu />
           </div>
         </div>
-        <h1 className={styles.title}>
-          {project.title ?? project.location}
-          {!project.title && <span className={styles.titleLoading} aria-label="Generating title" />}
-        </h1>
-        <div className={styles.summary}>
-          {project.model.displayName} · {project.imageSize} · {project.aspectRatio} · {project.timeOfDay} · {project.weather}
-        </div>
+        {renameError && <ErrorBanner error={renameError} onDismiss={() => setRenameError(null)} />}
       </header>
 
       <div className={styles.workspace}>
