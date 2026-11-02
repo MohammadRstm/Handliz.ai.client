@@ -10,6 +10,7 @@ export interface GenerateSettings {
   imageCount: number;
   modelKey: string;
   imageSize: string;
+  /** A ratio, or AS_IMAGE - the page resolves it against the photo. */
   aspectRatio: string;
   timeOfDay: TimeOfDay;
   weather: WeatherCondition;
@@ -22,6 +23,8 @@ interface GenerateFromPhotoDialogProps {
   models: ImageModelDto[];
   maxImages: number;
   aspectRatios: string[];
+  /** The photo's matching ratio for the "As image" option; null while it is being measured. */
+  imageRatio: string | null;
   /** The project's current settings - what the user picked when creating it, or last rendered with. */
   initial: GenerateSettings;
   onConfirm: (settings: GenerateSettings) => void;
@@ -33,7 +36,16 @@ interface GenerateFromPhotoDialogProps {
  * own settings - all adjustable first. Nothing is spent until they confirm; "Not now" leaves
  * the project ready to render later.
  */
-export function GenerateFromPhotoDialog({ photoSrc, models, maxImages, aspectRatios, initial, onConfirm, onCancel }: GenerateFromPhotoDialogProps) {
+export function GenerateFromPhotoDialog({
+  photoSrc,
+  models,
+  maxImages,
+  aspectRatios,
+  imageRatio,
+  initial,
+  onConfirm,
+  onCancel,
+}: GenerateFromPhotoDialogProps) {
   const [settings, setSettings] = useState<GenerateSettings>(initial);
   const set = <K extends keyof GenerateSettings>(key: K, value: GenerateSettings[K]) => setSettings((prev) => ({ ...prev, [key]: value }));
 
@@ -114,7 +126,12 @@ export function GenerateFromPhotoDialog({ photoSrc, models, maxImages, aspectRat
 
         <div className={styles.field}>
           <span>Aspect ratio</span>
-          <AspectRatioPicker ratios={aspectRatios} selected={settings.aspectRatio} onSelect={(ratio) => set("aspectRatio", ratio)} />
+          <AspectRatioPicker
+            ratios={aspectRatios}
+            selected={settings.aspectRatio}
+            onSelect={(ratio) => set("aspectRatio", ratio)}
+            imageRatio={imageRatio}
+          />
         </div>
 
         <div className={styles.field}>

@@ -38,3 +38,11 @@
 .optionSelected svg {
   color: var(--color-accent);
 }
+
+/* Spans the whole first row, above the fixed ratios. */
+.asImage {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: center;
+  gap: 8px;
+}
