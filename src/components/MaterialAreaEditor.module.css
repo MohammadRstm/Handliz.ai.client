@@ -29,10 +29,14 @@
   justify-content: center;
 }
 
-/* The image keeps its own aspect ratio; the edit layer sits exactly on top of it. */
+/* The image keeps its own aspect ratio; the edit layer sits exactly on top of it. The wrap
+   hugs the image, which is capped to the screen height (the MaterialOverlay maxHeight) - at
+   full width a photo ran far past the bottom of a laptop screen and had to be scrolled. */
 .imageWrap {
+  --editor-image-max-height: calc(100dvh - 64px);
   position: relative;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   user-select: none;
 }
 
