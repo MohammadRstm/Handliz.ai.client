@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ProjectMaterialDto, ProjectMaterialsResponse } from "../api/projectTypes";
-import { materialColor } from "./materialColor";
+import { MAX_MATERIALS, materialColor } from "./materialColor";
 import { MaterialOverlay, type DotStyle } from "./MaterialOverlay";
 import { Spinner } from "./Spinner";
 import styles from "./MaterialsPanel.module.css";
@@ -10,12 +10,13 @@ const MAX_NAME_LENGTH = 100;
 interface MaterialsPanelProps {
   concept: ProjectMaterialsResponse;
   /**
-   * Signed URL of the concept image for the small preview, already absolute - or null when
-   * there is none yet, or while it is shown full size in the main column (the review step).
+   * Signed URL of the image the materials are mapped on (the original photo) for the small
+   * preview, already absolute - or null when there is none, or while it is shown full size
+   * in the main column (the review step).
    */
   conceptImageSrc: string | null;
-  /** With no concept image, decides whether the hint says "wait for the first image" or "pick one" (after the concept image was deleted). */
-  hasGeneratedImages: boolean;
+  /** "Original photo", or "Concept image" for older projects mapped on a render. */
+  conceptImageAlt: string;
   isLabelling: boolean;
   /** Hover and selection are owned by the page, so this list and a full-size overlay stay in step. */
   hoveredId: string | null;
@@ -24,13 +25,16 @@ interface MaterialsPanelProps {
   onSelect: (materialId: string | null) => void;
   /** Resolves once the rename is saved; rejects to put the old name back. */
   onRename: (materialId: string, name: string) => Promise<void>;
+  /** Resolves once the material is added; rejects to keep the name in the form for another try. */
+  onAdd: (name: string) => Promise<void>;
+  onDelete: (material: ProjectMaterialDto) => Promise<void>;
   onOpenConceptImage?: () => void;
   /** How the dots are laid out - owned by the page so the full-size review image follows the same switch. */
   dotStyle: DotStyle;
   onDotStyleChange: (style: DotStyle) => void;
   /** Opens the area editor; omitted until the concept image is labelled. */
   onEditAreas?: () => void;
-  /** Present only while the concept awaits approval: renders the Approve / Try again actions. */
+  /** Present only while the materials await approval: renders the Approve / Try again actions. */
   review?: {
     canApprove: boolean;
     isBusy: boolean;
@@ -40,21 +44,23 @@ interface MaterialsPanelProps {
 }
 
 /**
- * The project's material concept, beside the grid: the concept image with each material
- * tinted over its surfaces, and the list of materials with their names editable as plain
- * text. A rename only changes future generations - the existing images, and the outlines on
- * the concept image, stay as they are.
+ * The project's materials: the photo they are mapped on with dots over each material's
+ * surfaces, and the list - rename as plain text, add up to MAX_MATERIALS, delete. Every
+ * change, and every redrawn area, applies to renders from then on; images already
+ * generated stay as they are.
  */
 export function MaterialsPanel({
   concept,
   conceptImageSrc,
-  hasGeneratedImages,
+  conceptImageAlt,
   isLabelling,
   hoveredId,
   selectedId,
   onHover,
   onSelect,
   onRename,
+  onAdd,
+  onDelete,
   onOpenConceptImage,
   dotStyle,
   onDotStyleChange,
@@ -74,6 +80,42 @@ export function MaterialsPanel({
           </button>
         )}
       </div>
+
+      {review && (
+        <p className={styles.hint}>
+          The main materials of your photo, with where they go. Rename, add or delete any and fix their areas - every render
+          in this project uses them. Approve when they're right.
+        </p>
+      )}
+
+      {conceptImageSrc ? (
+        <div className={styles.preview}>
+          <MaterialOverlay
+            src={conceptImageSrc}
+            alt={conceptImageAlt}
+            materials={concept.materials}
+            hidden={labelsHidden}
+            activeId={activeId}
+            selectedId={selectedId}
+            onHover={onHover}
+            onSelect={onSelect}
+            dotStyle={dotStyle}
+          />
+          {onOpenConceptImage && (
+            <button type="button" className={styles.expandButton} onClick={onOpenConceptImage} title={`Open the ${conceptImageAlt.toLowerCase()}`}>
+              Open
+            </button>
+          )}
+          {isLabelling && (
+            <div className={styles.labelling}>
+              <Spinner />
+              <span>Tracing materials...</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        !review && <p className={styles.hint}>The image these materials were mapped on has been deleted.</p>
+      )}
 
       {onEditAreas && (
         <button type="button" className={styles.editAreasButton} onClick={onEditAreas}>
@@ -97,47 +139,6 @@ export function MaterialsPanel({
         </div>
       )}
 
-      {review && (
-        <p className={styles.hint}>
-          These are the main materials for the whole project. Rename any that aren't right, then approve to generate your images.
-        </p>
-      )}
-
-      {conceptImageSrc ? (
-        <div className={styles.preview}>
-          <MaterialOverlay
-            src={conceptImageSrc}
-            alt="Concept image"
-            materials={concept.materials}
-            hidden={labelsHidden}
-            activeId={activeId}
-            selectedId={selectedId}
-            onHover={onHover}
-            onSelect={onSelect}
-            dotStyle={dotStyle}
-          />
-          {onOpenConceptImage && (
-            <button type="button" className={styles.expandButton} onClick={onOpenConceptImage} title="Open the concept image">
-              Open
-            </button>
-          )}
-          {isLabelling && (
-            <div className={styles.labelling}>
-              <Spinner />
-              <span>Tracing materials...</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        !review && (
-          <p className={styles.hint}>
-            {hasGeneratedImages
-              ? "Use “Set as concept” on an image to show where these materials are."
-              : "The materials are shown on the first image once it's ready."}
-          </p>
-        )
-      )}
-
       <ul className={styles.list}>
         {concept.materials.map((material) => (
           // Keyed by the saved name too, so a row restarts from the server's value whenever
@@ -149,31 +150,95 @@ export function MaterialsPanel({
             isSelected={selectedId === material.id}
             showMissing={concept.conceptLabelled && !material.box}
             onRename={onRename}
+            onDelete={onDelete}
             onHover={onHover}
             onSelect={onSelect}
           />
         ))}
       </ul>
 
+      {concept.materials.length < MAX_MATERIALS ? (
+        <AddMaterialForm onAdd={onAdd} />
+      ) : (
+        <p className={styles.footnote}>A project can have up to {MAX_MATERIALS} materials. Delete one to add another.</p>
+      )}
+
       {review ? (
         <div className={styles.actions}>
           <button type="button" className={styles.approveButton} onClick={review.onApprove} disabled={!review.canApprove || review.isBusy}>
-            Approve materials
+            {review.isBusy ? <Spinner /> : "Approve materials"}
           </button>
           <button
             type="button"
             className={styles.retryButton}
             onClick={review.onRetry}
             disabled={review.isBusy}
-            title="Render a new concept image and choose the materials again (uses credits)"
+            title="Read the photo again and choose the materials from scratch (uses credits)"
           >
             Try again
           </button>
         </div>
       ) : (
-        <p className={styles.footnote}>Renaming a material applies to images generated from now on.</p>
+        <p className={styles.footnote}>Changes apply to images generated from now on.</p>
       )}
     </aside>
+  );
+}
+
+function AddMaterialForm({ onAdd }: { onAdd: (name: string) => Promise<void> }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  if (!isOpen) {
+    return (
+      <button type="button" className={styles.addButton} onClick={() => setIsOpen(true)}>
+        + Add material
+      </button>
+    );
+  }
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed || isSaving) return;
+    setIsSaving(true);
+    try {
+      await onAdd(trimmed);
+      setName("");
+      setIsOpen(false);
+    } catch {
+      // The page shows the error; the name stays for another try.
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <form className={styles.addForm} onSubmit={submit}>
+      <input
+        type="text"
+        className={styles.addInput}
+        value={name}
+        maxLength={MAX_NAME_LENGTH}
+        placeholder="e.g. Weathered Corten steel cladding"
+        aria-label="New material name"
+        autoFocus
+        disabled={isSaving}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setIsOpen(false);
+        }}
+      />
+      <div className={styles.addActions}>
+        <button type="button" className={styles.retryButton} onClick={() => setIsOpen(false)} disabled={isSaving}>
+          Cancel
+        </button>
+        <button type="submit" className={styles.approveButton} disabled={!name.trim() || isSaving}>
+          {isSaving ? <Spinner /> : "Add and draw its area"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -181,16 +246,20 @@ interface MaterialRowProps {
   material: ProjectMaterialDto;
   isActive: boolean;
   isSelected: boolean;
-  /** Labelling ran and didn't find this material on the concept image. */
+  /** Labelling ran and didn't find this material on the concept image, or it was added and has no area yet. */
   showMissing: boolean;
   onRename: (materialId: string, name: string) => Promise<void>;
+  onDelete: (material: ProjectMaterialDto) => Promise<void>;
   onHover: (materialId: string | null) => void;
   onSelect: (materialId: string | null) => void;
 }
 
-function MaterialRow({ material, isActive, isSelected, showMissing, onRename, onHover, onSelect }: MaterialRowProps) {
+function MaterialRow({ material, isActive, isSelected, showMissing, onRename, onDelete, onHover, onSelect }: MaterialRowProps) {
   const [draft, setDraft] = useState(material.name);
   const [isSaving, setIsSaving] = useState(false);
+  // A material the user added has no written region - the API stores this placeholder, and
+  // renders place it by its drawn area alone. Shown as what it means instead.
+  const placedByArea = /^the area marked M\d+ on the material map$/i.test(material.regionDescription);
 
   const commit = async () => {
     const name = draft.trim();
@@ -206,6 +275,16 @@ function MaterialRow({ material, isActive, isSelected, showMissing, onRename, on
     } catch {
       setDraft(material.name);
     } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    setIsSaving(true);
+    try {
+      await onDelete(material);
+    } finally {
+      // Unmounted on success; this only matters when the delete failed or was cancelled.
       setIsSaving(false);
     }
   };
@@ -252,11 +331,33 @@ function MaterialRow({ material, isActive, isSelected, showMissing, onRename, on
           }}
         />
         <span className={styles.region}>
-          {material.regionDescription}
-          {showMissing && <span className={styles.missing}> · not in view</span>}
+          {placedByArea ? (
+            material.box ? (
+              "Placed where you drew it"
+            ) : (
+              <span className={styles.missing}>No area yet - draw it with Edit areas</span>
+            )
+          ) : (
+            <>
+              {material.regionDescription}
+              {showMissing && <span className={styles.missing}> · not in view</span>}
+            </>
+          )}
         </span>
       </div>
-      {isSaving && <Spinner />}
+      {isSaving ? (
+        <Spinner />
+      ) : (
+        <button
+          type="button"
+          className={styles.deleteButton}
+          onClick={() => void remove()}
+          aria-label={`Delete ${material.label} ${material.name}`}
+          title="Delete this material"
+        >
+          ×
+        </button>
+      )}
     </li>
   );
 }

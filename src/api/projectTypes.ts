@@ -81,6 +81,11 @@ export interface GeneratedImageDto {
   url: string;
   /** Small variant, for grid tiles. Use `url` only where the image is actually shown large. */
   thumbnailUrl: string;
+  /**
+   * The uploaded photo this render was made from, when it came from one selected photo.
+   * Null for older images and renders from several photos at once.
+   */
+  sourceReferenceIndex: number | null;
 }
 
 /** A fast, GPT-free DB write - no prompt, title, or images yet. Fetch those separately right after navigating in. */
@@ -104,14 +109,14 @@ export interface MaterialBoxDto {
 
 export interface ProjectMaterialDto {
   id: string;
-  /** "M1".."M5" - stable for the life of the material. */
+  /** "M1".."M8" - stable for the life of the material; a deleted one's label is reused by the next added. */
   label: string;
   /** The only user-editable field. */
   name: string;
-  /** Where GPT placed it on the building - shown, never edited. */
+  /** Where it goes on the building, in words - GPT's, or "the area marked Mn on the material map" for one the user added. */
   regionDescription: string;
   order: number;
-  /** Where it appears on the concept image, or null when it isn't labelled there (or wasn't found). */
+  /** Where it appears on the concept image, or null when it isn't there (not found, or added and not drawn yet). */
   box: MaterialBoxDto | null;
   /**
    * Its outline on the concept image: one polygon per surface (each window, each wall face),
@@ -122,17 +127,20 @@ export interface ProjectMaterialDto {
 }
 
 /**
- * The project's material concept: up to five dominant materials chosen by the first prompt
- * step, and the generated image they are labelled on. Empty materials means the project
- * predates the feature (or GPT found nothing worth pinning down) - show no panel.
+ * The project's material concept: its dominant materials (GPT picks up to five, the user can
+ * have up to MAX_MATERIALS) and the image they are mapped on - the project's original photo,
+ * or a generated image for older projects. Empty materials means the project predates the
+ * feature (or GPT found nothing worth pinning down) - show no panel.
  */
 export interface ProjectMaterialsResponse {
   success: true;
-  /** Null until the project's first image finishes. */
+  /** The uploaded photo the materials are mapped on. Takes precedence over conceptImageId. */
+  conceptReferenceIndex: number | null;
+  /** Older projects: the generated image they are mapped on, while conceptReferenceIndex is null. */
   conceptImageId: string | null;
   conceptVersion: number;
   /**
-   * False with a conceptImageId and materials means labelConceptImage still needs calling;
+   * False with a concept image and materials means labelConceptImage still needs calling;
    * true with no boxes means labelling ran and found none of the materials in view.
    */
   conceptLabelled: boolean;
@@ -151,29 +159,17 @@ export interface ProjectDetailResponse {
   model: ImageModelSummaryDto;
   imageSize: string;
   requestedImageCount: number;
-  /** How many images one batch produces - the approval step's default count, and new-batch edits'. */
+  /** How many images one batch produces - the default count for renders. */
   imageCountPerBatch: number;
   /**
-   * False while the user reviews the material concept: only the concept image (slot 0)
-   * exists, and the batch waits for approveConcept.
+   * False while the user reviews the materials on the original photo: nothing can be
+   * rendered until approveConcept.
    */
   conceptApproved: boolean;
   generatedPrompt: string | null;
   referenceImages: UploadedReferenceImageDto[];
   images: GeneratedImageDto[];
   concept: ProjectMaterialsResponse;
-}
-
-/** The batch approval opened: generate indices firstNewIndex .. requestedImageCount - 1, one call each, in parallel. */
-export interface ApproveConceptResponse {
-  success: true;
-  requestedImageCount: number;
-  firstNewIndex: number;
-  imageCount: number;
-  model: ImageModelSummaryDto;
-  imageSize: string;
-  /** A material was renamed during review, so the prompt was revised first (costs credits). */
-  promptRevised: boolean;
 }
 
 export interface GeneratePromptResponse {

@@ -10,14 +10,12 @@ interface ProjectImageTileProps {
   /** Manual selection for editing (Chunk 8) - independent of the lightbox viewer, which opens on the image itself. */
   isChecked?: boolean;
   onToggleCheck?: () => void;
-  /** Shown on an uploaded image added mid-project (Chunk 5), never on the original upload set. */
-  isNewlyAdded?: boolean;
+  /** A corner badge - "Original" on the photo the materials are mapped on, "Added" on a photo uploaded mid-project. */
+  badge?: string;
+  /** Draws the badge in the accent colour, for the one image that matters most (the original). */
+  badgeAccent?: boolean;
   /** This already-loaded image is being refined in place - keep it visible but overlay a spinner rather than blanking it like status="loading" does. */
   isRefining?: boolean;
-  /** This is the image the project's materials are labelled on. */
-  isConcept?: boolean;
-  /** Offered on hover for generated images that aren't the concept image; omitted for projects without materials. */
-  onSetConcept?: () => void;
   onClick?: () => void;
   onRetry?: () => void;
 }
@@ -28,10 +26,9 @@ export function ProjectImageTile({
   label,
   isChecked,
   onToggleCheck,
-  isNewlyAdded,
+  badge,
+  badgeAccent,
   isRefining,
-  isConcept,
-  onSetConcept,
   onClick,
   onRetry,
 }: ProjectImageTileProps) {
@@ -49,23 +46,7 @@ export function ProjectImageTile({
         </div>
       )}
 
-      {status === "loaded" && isNewlyAdded && <span className={styles.badge}>Added</span>}
-
-      {status === "loaded" && isConcept && <span className={`${styles.badge} ${styles.conceptBadge}`}>Concept</span>}
-
-      {status === "loaded" && !isConcept && onSetConcept && (
-        <button
-          type="button"
-          className={styles.setConceptButton}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSetConcept();
-          }}
-          title="Label the project's materials on this image instead"
-        >
-          Set as concept
-        </button>
-      )}
+      {status === "loaded" && badge && <span className={`${styles.badge} ${badgeAccent ? styles.badgeAccent : ""}`}>{badge}</span>}
 
       {status === "loaded" && onToggleCheck && (
         <button

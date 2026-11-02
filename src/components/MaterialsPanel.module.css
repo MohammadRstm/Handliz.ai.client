@@ -259,3 +259,97 @@
 .editAreasButton:hover {
   border-color: var(--color-accent);
 }
+
+/* Hover-only, like the tile controls - deleting is rare, and a permanent x on every row
+   would crowd the list. */
+.deleteButton {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 3px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.row:hover .deleteButton,
+.row:focus-within .deleteButton,
+.deleteButton:focus-visible {
+  opacity: 1;
+}
+
+.deleteButton:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+@media (hover: none) {
+  .deleteButton {
+    opacity: 1;
+  }
+}
+
+.addButton {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.addButton:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.addInput {
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.addInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.addActions {
+  display: flex;
+  gap: 8px;
+}
+
+.addActions .approveButton,
+.addActions .retryButton {
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.approveButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -4,8 +4,10 @@ import * as projectsApi from "../api/projectsApi";
 import { ApiError, imageUrl } from "../api/client";
 import type {
   ProjectDetailResponse,
+  EditImagesParams,
   GeneratedImageDto,
   ImageModelsResponse,
+  ProjectMaterialDto,
   ProjectMaterialsResponse,
   TimeOfDay,
   UploadedReferenceImageDto,
@@ -17,8 +19,8 @@ import { AspectRatioIcon, AspectRatioPicker } from "../components/AspectRatioPic
 import { ProjectImageTile } from "../components/ProjectImageTile";
 import { Dropdown } from "../components/Dropdown";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { AttachIcon, BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
-import { ApproveConceptDialog, type ApproveSettings } from "../components/ApproveConceptDialog";
+import { BackArrowIcon, ChevronUpDownIcon, HamburgerIcon } from "../components/icons";
+import { GenerateFromPhotoDialog, type GenerateSettings } from "../components/GenerateFromPhotoDialog";
 import { Lightbox, type LightboxItem } from "../components/Lightbox";
 import { MaterialAreaEditor } from "../components/MaterialAreaEditor";
 import { MaterialOverlay, type DotStyle } from "../components/MaterialOverlay";
@@ -33,6 +35,14 @@ import styles from "./ProjectPage.module.css";
 function toError(err: unknown): ApiError | Error {
   if (err instanceof ApiError || err instanceof Error) return err;
   return new Error("Something went wrong.");
+}
+
+/** The image the materials are mapped on, however the project came by it. */
+interface ConceptSource {
+  src: string;
+  thumbnailSrc: string;
+  alt: string;
+  lightboxId: string;
 }
 
 export function ProjectPage() {
@@ -57,8 +67,7 @@ export function ProjectPage() {
 
   // Manual selection for editing (Chunks 7/8) - two distinct sets, never merged, so the
   // state model itself (not array ordering or a UI label) is what keeps "uploaded" and
-  // "generated" apart. Empty-both is the default: apply to every currently generated
-  // image, never to uploaded ones.
+  // "generated" apart. Photos are selected in the left column, renders in the middle.
   const [selectedGeneratedIds, setSelectedGeneratedIds] = useState<Set<string>>(new Set());
   const [selectedReferenceIndices, setSelectedReferenceIndices] = useState<Set<number>>(new Set());
 
@@ -73,6 +82,13 @@ export function ProjectPage() {
   // tiles until the real ones arrive. Exactly one of the two is ever non-empty per request.
   const [refiningImageIds, setRefiningImageIds] = useState<Set<string>>(new Set());
   const [pendingNewImageCount, setPendingNewImageCount] = useState(0);
+
+  // Renders waiting their turn - one per photo uploaded while another render runs. Edits
+  // run one at a time: the API numbers new images as it appends them, and two batches
+  // appending at once could be given the same numbers.
+  const renderQueue = useRef<EditImagesParams[]>([]);
+  const isDraining = useRef(false);
+  const [queuedImageCount, setQueuedImageCount] = useState(0);
 
   // In-project editable generation parameters (Chunk 9) - seeded from the project's current
   // values once it loads, then editable via the settings dropdown. Sent with every edit
@@ -94,7 +110,7 @@ export function ProjectPage() {
   const [deleteError, setDeleteError] = useState<Error | null>(null);
 
   // The project's material concept (see MaterialsPanel). Mirrored into a ref because the
-  // image-generation callbacks that decide whether to label it are created before it loads.
+  // callbacks that decide whether to label it are created before it loads.
   const [concept, setConcept] = useState<ProjectMaterialsResponse | null>(null);
   const conceptRef = useRef<ProjectMaterialsResponse | null>(null);
   const [isLabelling, setIsLabelling] = useState(false);
@@ -124,32 +140,37 @@ export function ProjectPage() {
     }
   };
 
-  // The review step: a new project renders only its concept image; the batch waits for the
-  // user to approve the materials (see the backend's ApproveConceptAsync).
-  const [isApproveOpen, setIsApproveOpen] = useState(false);
+  // The review step: the materials are agreed on the user's own photo before anything is
+  // rendered; approving them asks whether to render that photo now (see the backend's
+  // ApproveConceptAsync, which only approves).
   const [isApproving, setIsApproving] = useState(false);
-  const [approveError, setApproveError] = useState<Error | null>(null);
+  const [isGenerateOpen, setIsGenerateOpen] = useState(false);
   const [isRetryingConcept, setIsRetryingConcept] = useState(false);
-  const [isAreaEditorOpen, setIsAreaEditorOpen] = useState(false);
+  // Which material the area editor opens on, and whether straight into drawing - a material
+  // just added has no area yet, so drawing one is the next thing to do.
+  const [areaEditor, setAreaEditor] = useState<{ materialId: string | null; drawing: boolean } | null>(null);
 
   useEffect(() => {
     conceptRef.current = concept;
   }, [concept]);
 
-  // Labelling is a separate ~10 s Gemini call the backend keeps out of image generation,
-  // so the first image isn't held back by it - the client asks for it as soon as the
-  // concept looks unlabelled. One call at a time: the first batch's images finish within
-  // seconds of each other, and the backend's labelled check isn't a lock.
+  // Labelling is a separate ~10 s Gemini call, asked for as soon as the concept looks
+  // unlabelled - for a new project, right after the prompt step chooses the materials. One
+  // call at a time: the backend's labelled check isn't a lock.
   const labelConceptIfNeeded = useCallback(
     (targetProjectId: string) => {
       const current = conceptRef.current;
       if (!accessToken || labelInFlight.current || !current || current.materials.length === 0 || current.conceptLabelled) return;
+      if (current.conceptReferenceIndex === null && !current.conceptImageId) return;
       labelInFlight.current = true;
       setIsLabelling(true);
       setConceptError(null);
       projectsApi
         .labelConceptImage(targetProjectId, accessToken)
-        .then(setConcept)
+        .then((labelled) => {
+          setConcept(labelled);
+          conceptRef.current = labelled;
+        })
         .catch((err) => setConceptError(toError(err)))
         .finally(() => {
           labelInFlight.current = false;
@@ -163,6 +184,8 @@ export function ProjectPage() {
   const promptKickedOffForProjectId = useRef<string | null>(null);
   const titleKickedOffForProjectId = useRef<string | null>(null);
 
+  // Open image slots - only older projects have these now; new projects render through
+  // editImages once their materials are approved.
   const generateIndex = useCallback(
     (targetProjectId: string, index: number) => {
       if (!accessToken) return;
@@ -177,8 +200,8 @@ export function ProjectPage() {
         .generateProjectImage(targetProjectId, index, accessToken)
         .then((dto) => {
           setImages((prev) => [...prev.filter((img) => img.index !== index), dto].sort((a, b) => a.index - b.index));
-          // The first image of the first batch to land becomes the concept image server-side,
-          // so the concept is ready to label from here. A no-op once it is labelled.
+          // An older project's first image becomes its concept image server-side, so it is
+          // ready to label from here. A no-op once it is labelled.
           labelConceptIfNeeded(targetProjectId);
           // Only on success: a failed call releases its credit hold rather than spending
           // it (see the backend's fail-open metering), so usage genuinely hasn't changed
@@ -212,10 +235,10 @@ export function ProjectPage() {
     [generateIndex],
   );
 
-  // Stage 1, then the images. The prompt step also chooses the materials, which decides
-  // whether the project opens with only its concept image (materials to review) or goes
-  // straight to its full batch (none chosen) - so the project is re-read before any image is
-  // requested. A callback rather than inline in the load effect because Try again runs it again.
+  // Stage 1: GPT reads the photo and chooses the materials, which are then mapped on it. The
+  // project is re-read afterwards for the materials - and because a project where GPT found
+  // none is approved on the spot, which goes straight to asking whether to render. A
+  // callback rather than inline in the load effect because Try again runs it again.
   const runPromptStep = useCallback(
     (targetProjectId: string) => {
       if (!accessToken || promptKickedOffForProjectId.current === targetProjectId) return;
@@ -228,20 +251,23 @@ export function ProjectPage() {
           setConcept(refreshed.concept);
           conceptRef.current = refreshed.concept;
           refreshUsage();
+          labelConceptIfNeeded(targetProjectId);
+          if (refreshed.conceptApproved && refreshed.concept.materials.length === 0 && refreshed.images.length === 0) {
+            setIsGenerateOpen(true);
+          }
           kickOffMissingImages(targetProjectId, refreshed.requestedImageCount, new Set(refreshed.images.map((img) => img.index)));
         })
         .catch((err) => setLoadError(toError(err)));
     },
-    [accessToken, kickOffMissingImages, refreshUsage],
+    [accessToken, kickOffMissingImages, labelConceptIfNeeded, refreshUsage],
   );
 
   // Load the project, then:
   //  - if it has no title yet, fetch one (fast, text-only) - independent of everything
-  //    else, so it typically appears well before the images do.
-  //  - if it has no prompt yet, fetch one (Stage 1, slower - analyzes the reference
-  //    photos) and only THEN kick off image generation for missing slots, since Gemini
-  //    needs that prompt. If the prompt is already present (a project opened before, or
-  //    reopened after a previous attempt), skip straight to image generation.
+  //    else, so it typically appears well before the materials do.
+  //  - if it has no prompt yet, run the prompt step (it chooses the materials, which are
+  //    then mapped on the photo). If the prompt is already present (a project opened
+  //    before), map the materials if that didn't finish, and fill any open image slots.
   // Each step is guarded by its own ref so React StrictMode's double-invoke (or a
   // re-render) never fires the same project's title/prompt/images more than once.
   useEffect(() => {
@@ -259,7 +285,7 @@ export function ProjectPage() {
         conceptRef.current = response.concept;
         originalReferenceCount.current = response.referenceImages.length;
         // Covers a project reopened after its labelling call failed or was cut short.
-        if (response.concept.conceptImageId) labelConceptIfNeeded(projectId);
+        labelConceptIfNeeded(projectId);
 
         setEditTimeOfDay(response.timeOfDay as TimeOfDay);
         setEditWeather(response.weather as WeatherCondition);
@@ -309,15 +335,15 @@ export function ProjectPage() {
         id: img.imageId,
         src: imageUrl(img.url),
         thumbnailSrc: imageUrl(img.thumbnailUrl),
-        label: `Generated image ${img.index + 1}`,
+        label: generatedLabel(img),
       }));
     const referenceItems: LightboxItem[] = uploadedImages.map((ref) => ({
       id: `reference-${ref.index}`,
       src: imageUrl(ref.url),
       thumbnailSrc: imageUrl(ref.thumbnailUrl),
-      label: `Reference photo ${ref.index + 1}`,
+      label: `Photo ${ref.index + 1}`,
     }));
-    // Same order as the grid renders them (references first), so stepping through the
+    // Same order as the page shows them (photos on the left first), so stepping through the
     // viewer with the arrows follows the order the user is looking at.
     return [...referenceItems, ...generatedItems];
   }, [images, uploadedImages]);
@@ -328,9 +354,20 @@ export function ProjectPage() {
     if (model) setEditImageSize(model.defaultImageSize);
   };
 
+  const conceptReferenceIndex = concept?.conceptReferenceIndex ?? null;
+
   const handleDeleteSelected = useCallback(async () => {
     if (!projectId || !accessToken || isDeleting || isEditing) return;
     if (selectedGeneratedIds.size === 0 && selectedReferenceIndices.size === 0) return;
+    // The original carries the material areas every render is placed from - the materials
+    // themselves stay, but their areas go with it, so this one is worth a second look.
+    if (
+      conceptReferenceIndex !== null &&
+      selectedReferenceIndices.has(conceptReferenceIndex) &&
+      !window.confirm("Delete the original photo? The materials stay, but the areas you mapped on it are deleted with it.")
+    ) {
+      return;
+    }
 
     setIsDeleting(true);
     setDeleteError(null);
@@ -343,7 +380,7 @@ export function ProjectPage() {
       setProject(refreshed);
       setImages(refreshed.images);
       setUploadedImages(refreshed.referenceImages);
-      // Deleting the concept image leaves the project without one (the materials stay).
+      // Deleting the image the materials are mapped on leaves them unmapped (they stay).
       setConcept(refreshed.concept);
       setSelectedGeneratedIds(new Set());
       setSelectedReferenceIndices(new Set());
@@ -352,7 +389,7 @@ export function ProjectPage() {
     } finally {
       setIsDeleting(false);
     }
-  }, [projectId, accessToken, isDeleting, isEditing, selectedGeneratedIds, selectedReferenceIndices]);
+  }, [projectId, accessToken, isDeleting, isEditing, selectedGeneratedIds, selectedReferenceIndices, conceptReferenceIndex]);
 
   // Backspace (and, defensively, Delete) previously risked triggering a browser's native
   // "navigate back" behavior when focus isn't in a text field - unmounting this page and
@@ -405,14 +442,55 @@ export function ProjectPage() {
     });
   };
 
+  const applyConcept = (updated: ProjectMaterialsResponse) => {
+    setConcept(updated);
+    conceptRef.current = updated;
+  };
+
   const handleRenameMaterial = async (materialId: string, name: string) => {
     if (!projectId || !accessToken) return;
     setConceptError(null);
     try {
-      setConcept(await projectsApi.renameMaterials(projectId, [{ id: materialId, name }], accessToken));
+      applyConcept(await projectsApi.renameMaterials(projectId, [{ id: materialId, name }], accessToken));
     } catch (err) {
       setConceptError(toError(err));
       throw err;
+    }
+  };
+
+  const handleAddMaterial = async (name: string) => {
+    if (!projectId || !accessToken) return;
+    setConceptError(null);
+    try {
+      const before = new Set(conceptRef.current?.materials.map((m) => m.id) ?? []);
+      const updated = await projectsApi.addMaterial(projectId, name, accessToken);
+      applyConcept(updated);
+      const added = updated.materials.find((m) => !before.has(m.id));
+      if (added) {
+        setSelectedMaterialId(added.id);
+        // Placed by its area alone, so drawing one is the natural next step - possible
+        // once the photo is mapped (the API refuses areas before that).
+        if (updated.conceptLabelled) {
+          setHoveredMaterialId(null);
+          setAreaEditor({ materialId: added.id, drawing: true });
+        }
+      }
+    } catch (err) {
+      setConceptError(toError(err));
+      throw err;
+    }
+  };
+
+  const handleDeleteMaterial = async (material: ProjectMaterialDto) => {
+    if (!projectId || !accessToken) return;
+    if (!window.confirm(`Delete ${material.label}, “${material.name}”? Its areas are deleted with it.`)) return;
+    setConceptError(null);
+    try {
+      applyConcept(await projectsApi.deleteMaterial(projectId, material.id, accessToken));
+      if (selectedMaterialId === material.id) setSelectedMaterialId(null);
+      setHoveredMaterialId(null);
+    } catch (err) {
+      setConceptError(toError(err));
     }
   };
 
@@ -427,49 +505,17 @@ export function ProjectPage() {
     [projectId, accessToken],
   );
 
-  const handleSetConcept = async (imageId: string) => {
-    if (!projectId || !accessToken || isLabelling) return;
-    setConceptError(null);
-    try {
-      const updated = await projectsApi.setConceptImage(projectId, imageId, accessToken);
-      setConcept(updated);
-      conceptRef.current = updated;
-      labelConceptIfNeeded(projectId);
-    } catch (err) {
-      setConceptError(toError(err));
-    }
-  };
-
-  const handleApproveConcept = async (settings: ApproveSettings) => {
+  const handleApprove = async () => {
     if (!projectId || !accessToken || isApproving) return;
     setIsApproving(true);
-    setApproveError(null);
+    setConceptError(null);
     try {
-      const result = await projectsApi.approveConcept(projectId, settings, accessToken);
-      setProject((prev) =>
-        prev
-          ? {
-              ...prev,
-              conceptApproved: true,
-              requestedImageCount: result.requestedImageCount,
-              imageCountPerBatch: result.imageCount,
-              model: result.model,
-              imageSize: result.imageSize,
-            }
-          : prev,
-      );
-      setEditModelKey(result.model.key);
-      setEditImageSize(result.imageSize);
-      setEditImageCount(result.imageCount);
-      setIsApproveOpen(false);
+      await projectsApi.approveConcept(projectId, accessToken);
+      setProject((prev) => (prev ? { ...prev, conceptApproved: true } : prev));
       setSelectedMaterialId(null);
-      // Same one-call-per-image fan-out as a new project's first batch.
-      for (let i = result.firstNewIndex; i < result.requestedImageCount; i++) {
-        generateIndex(projectId, i);
-      }
-      if (result.promptRevised) refreshUsage();
+      setIsGenerateOpen(true);
     } catch (err) {
-      setApproveError(toError(err));
+      setConceptError(toError(err));
     } finally {
       setIsApproving(false);
     }
@@ -477,26 +523,29 @@ export function ProjectPage() {
 
   const handleRetryConcept = async () => {
     if (!projectId || !accessToken || isRetryingConcept) return;
-    if (!window.confirm("Render a new concept image and choose the materials again? This uses credits.")) return;
+    if (!window.confirm("Read your photo again and choose the materials from scratch? Your changes to them are lost, and it uses credits.")) return;
     setIsRetryingConcept(true);
     setConceptError(null);
     try {
       await projectsApi.retryConcept(projectId, accessToken);
+      const previous = conceptRef.current;
+      // The photo stays the concept image; an older project's generated concept is discarded.
       const emptyConcept: ProjectMaterialsResponse = {
         success: true,
+        conceptReferenceIndex: previous?.conceptReferenceIndex ?? null,
         conceptImageId: null,
         conceptVersion: 0,
         conceptLabelled: false,
         materials: [],
       };
+      const renderedConcept = emptyConcept.conceptReferenceIndex === null;
       setImages([]);
       setFailedIndices(new Set());
-      setConcept(emptyConcept);
-      conceptRef.current = emptyConcept;
+      applyConcept(emptyConcept);
       setHoveredMaterialId(null);
       setSelectedMaterialId(null);
-      setProject((prev) => (prev ? { ...prev, generatedPrompt: null, requestedImageCount: 1 } : prev));
-      // Cleared so the prompt and the concept image run again for this same project.
+      setProject((prev) => (prev ? { ...prev, generatedPrompt: null, requestedImageCount: renderedConcept ? 1 : 0 } : prev));
+      // Cleared so the prompt (and an older project's concept image) runs again for this project.
       promptKickedOffForProjectId.current = null;
       imagesKickedOffForProjectId.current = null;
       runPromptStep(projectId);
@@ -507,18 +556,116 @@ export function ProjectPage() {
     }
   };
 
-  const handleAttachClick = () => fileInputRef.current?.click();
+  const currentSettings = (): Omit<EditImagesParams, "instruction" | "selectedGeneratedImageIds" | "selectedReferenceIndices"> => ({
+    timeOfDay: editTimeOfDay,
+    weather: editWeather,
+    location: editLocation,
+    aspectRatio: editAspectRatio,
+    imageCount: editImageCount,
+    modelKey: editModelKey,
+    imageSize: editImageSize,
+  });
 
-  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  /** Runs one edit request; resolves true when it succeeded. Callers make sure only one runs at a time. */
+  const runEdit = async (params: EditImagesParams): Promise<boolean> => {
+    if (!projectId || !accessToken) return false;
+    // Mirrors the backend's branch decision: a selected photo, or nothing selected, adds new images.
+    const isNewBatch = params.selectedReferenceIndices.length > 0 || params.selectedGeneratedImageIds.length === 0;
+
+    setIsEditing(true);
+    setEditError(null);
+    if (isNewBatch) {
+      setPendingNewImageCount(params.imageCount);
+    } else {
+      setRefiningImageIds(new Set(params.selectedGeneratedImageIds));
+    }
+    try {
+      const response = await projectsApi.editImages(projectId, params, accessToken);
+
+      if (response.usedGpt) {
+        setImages((prev) => [...prev, ...response.newImages].sort((a, b) => a.index - b.index));
+      } else {
+        setImages((prev) => prev.map((img) => response.updatedImages.find((u) => u.imageId === img.imageId) ?? img));
+      }
+      const selectedModel = catalog?.models.find((m) => m.key === params.modelKey);
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              requestedImageCount: response.requestedImageCount,
+              timeOfDay: params.timeOfDay,
+              weather: params.weather,
+              location: params.location,
+              aspectRatio: params.aspectRatio,
+              imageSize: params.imageSize,
+              model: selectedModel ? { key: selectedModel.key, displayName: selectedModel.displayName } : prev.model,
+            }
+          : prev,
+      );
+      // A partial failure (some images in the batch failed) still resolves rather than
+      // throwing here - see RunRefineOnlyBranchAsync/RunGptEditBranchAsync - and still
+      // settles credits for whichever images succeeded, so this fires on that path too.
+      refreshUsage();
+      return true;
+    } catch (err) {
+      setEditError(toError(err));
+      return false;
+    } finally {
+      setIsEditing(false);
+      setRefiningImageIds(new Set());
+      setPendingNewImageCount(0);
+    }
+  };
+
+  const queueRender = (params: EditImagesParams) => {
+    renderQueue.current.push(params);
+    setQueuedImageCount((count) => count + params.imageCount);
+    if (isDraining.current) return;
+    isDraining.current = true;
+    void (async () => {
+      while (renderQueue.current.length > 0) {
+        const next = renderQueue.current.shift()!;
+        setQueuedImageCount((count) => count - next.imageCount);
+        await runEdit(next);
+      }
+      isDraining.current = false;
+    })();
+  };
+
+  const originalPhoto =
+    (conceptReferenceIndex !== null ? uploadedImages.find((ref) => ref.index === conceptReferenceIndex) : undefined) ?? uploadedImages[0];
+
+  const handleGenerateFromPhoto = (settings: GenerateSettings) => {
+    setIsGenerateOpen(false);
+    if (!originalPhoto) return;
+    // The bar keeps whatever was chosen here, as the project's settings from now on.
+    setEditTimeOfDay(settings.timeOfDay);
+    setEditWeather(settings.weather);
+    setEditLocation(settings.location);
+    setEditAspectRatio(settings.aspectRatio);
+    setEditImageCount(settings.imageCount);
+    setEditModelKey(settings.modelKey);
+    setEditImageSize(settings.imageSize);
+    queueRender({ instruction: "", selectedGeneratedImageIds: [], selectedReferenceIndices: [originalPhoto.index], ...settings });
+  };
+
+  const handleAddPhotoClick = () => fileInputRef.current?.click();
+
+  // Every photo added after approval is rendered right away with the current settings -
+  // each on its own, so several picked at once get one render each, in turn.
+  const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
     event.target.value = ""; // allow re-selecting the same file later
-    if (!file || !projectId || !accessToken || isDeleting) return;
+    if (files.length === 0 || !projectId || !accessToken || isDeleting) return;
 
     setIsUploadingImage(true);
     setUploadError(null);
     try {
-      const response = await projectsApi.uploadReferenceImage(projectId, file, accessToken);
-      setUploadedImages((prev) => [...prev, response.referenceImage]);
+      for (const file of files) {
+        const response = await projectsApi.uploadReferenceImage(projectId, file, accessToken);
+        setUploadedImages((prev) => [...prev, response.referenceImage]);
+        queueRender({ instruction: "", selectedGeneratedImageIds: [], selectedReferenceIndices: [response.referenceImage.index], ...currentSettings() });
+      }
     } catch (err) {
       setUploadError(toError(err));
     } finally {
@@ -545,72 +692,23 @@ export function ProjectPage() {
       editModelKey !== project.model.key ||
       editImageSize !== project.imageSize
     : false;
+  const isBusy = isEditing || queuedImageCount > 0;
   const canSubmit = instruction.trim().length > 0 || willUseGpt || hasParamChanges;
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!projectId || !accessToken || !canSubmit || isEditing || isDeleting) return;
+    if (!canSubmit || isBusy || isDraining.current || isDeleting) return;
 
-    setIsEditing(true);
-    setEditError(null);
-    if (willUseGpt) {
-      setPendingNewImageCount(editImageCount);
-    } else {
-      setRefiningImageIds(new Set(selectedGeneratedIds));
-    }
-    try {
-      const response = await projectsApi.editImages(
-        projectId,
-        {
-          instruction: instruction.trim(),
-          selectedGeneratedImageIds: Array.from(selectedGeneratedIds),
-          selectedReferenceIndices: Array.from(selectedReferenceIndices),
-          timeOfDay: editTimeOfDay,
-          weather: editWeather,
-          location: editLocation,
-          aspectRatio: editAspectRatio,
-          imageCount: editImageCount,
-          modelKey: editModelKey,
-          imageSize: editImageSize,
-        },
-        accessToken,
-      );
-
-      if (response.usedGpt) {
-        setImages((prev) => [...prev, ...response.newImages].sort((a, b) => a.index - b.index));
-      } else {
-        setImages((prev) =>
-          prev.map((img) => response.updatedImages.find((u) => u.imageId === img.imageId) ?? img),
-        );
-      }
-      const selectedModel = catalog?.models.find((m) => m.key === editModelKey);
-      setProject((prev) =>
-        prev
-          ? {
-              ...prev,
-              requestedImageCount: response.requestedImageCount,
-              timeOfDay: editTimeOfDay,
-              weather: editWeather,
-              location: editLocation,
-              aspectRatio: editAspectRatio,
-              imageSize: editImageSize,
-              model: selectedModel ? { key: selectedModel.key, displayName: selectedModel.displayName } : prev.model,
-            }
-          : prev,
-      );
+    const succeeded = await runEdit({
+      instruction: instruction.trim(),
+      selectedGeneratedImageIds: Array.from(selectedGeneratedIds),
+      selectedReferenceIndices: Array.from(selectedReferenceIndices),
+      ...currentSettings(),
+    });
+    if (succeeded) {
       setInstruction("");
       setSelectedGeneratedIds(new Set());
       setSelectedReferenceIndices(new Set());
-      // A partial failure (some images in the batch failed) still resolves rather than
-      // throwing here - see RunRefineOnlyBranchAsync/RunGptEditBranchAsync - and still
-      // settles credits for whichever images succeeded, so this fires on that path too.
-      refreshUsage();
-    } catch (err) {
-      setEditError(toError(err));
-    } finally {
-      setIsEditing(false);
-      setRefiningImageIds(new Set());
-      setPendingNewImageCount(0);
     }
   };
 
@@ -635,18 +733,47 @@ export function ProjectPage() {
     );
   }
 
+  const materials = concept?.materials ?? [];
   // Projects from before the material concept existed (and any where GPT found nothing
-  // worth pinning down) have no materials - they keep the single-column layout.
-  const showMaterials = (concept?.materials.length ?? 0) > 0;
-  const conceptImage = concept?.conceptImageId ? images.find((img) => img.imageId === concept.conceptImageId) : undefined;
-  // While reviewing, the concept image is shown full size in place of the grid. Its id is
-  // only known once labelling returns, so until then slot 0 stands in - it is the only image.
+  // worth pinning down) have no materials - they get no materials column.
+  const showMaterials = materials.length > 0;
   const inReview = !project.conceptApproved;
-  const reviewImage = conceptImage ?? images.find((img) => img.index === 0);
+
+  // The original photo for new projects; older projects mapped their materials on a render.
+  const conceptReference = conceptReferenceIndex !== null ? uploadedImages.find((ref) => ref.index === conceptReferenceIndex) : undefined;
+  const conceptGenerated =
+    !conceptReference && concept?.conceptImageId ? images.find((img) => img.imageId === concept.conceptImageId) : undefined;
+  const conceptSource: ConceptSource | null = conceptReference
+    ? {
+        src: imageUrl(conceptReference.url),
+        thumbnailSrc: imageUrl(conceptReference.thumbnailUrl),
+        alt: "Original photo",
+        lightboxId: `reference-${conceptReference.index}`,
+      }
+    : conceptGenerated
+      ? {
+          src: imageUrl(conceptGenerated.url),
+          thumbnailSrc: imageUrl(conceptGenerated.thumbnailUrl),
+          alt: "Concept image",
+          lightboxId: conceptGenerated.imageId,
+        }
+      : null;
+  // An older project still in review rendered its concept into slot 0; its id is only known
+  // once labelling returns, so until then slot 0 stands in.
+  const legacyReviewImage = !conceptSource && inReview ? images.find((img) => img.index === 0) : undefined;
+  const reviewSrc = conceptSource?.src ?? (legacyReviewImage ? imageUrl(legacyReviewImage.url) : null);
   const activeMaterialId = hoveredMaterialId ?? selectedMaterialId;
 
+  const reviewStatus = !project.generatedPrompt
+    ? "Reading your photo and choosing the main materials..."
+    : isLabelling
+      ? "Mapping the materials on your photo..."
+      : null;
+  const placeholderCount = pendingNewImageCount + queuedImageCount;
+  const hasRenders = project.requestedImageCount > 0 || placeholderCount > 0;
+
   return (
-    <div className={`${styles.page} ${showMaterials ? styles.withMaterials : ""}`}>
+    <div className={`${styles.page} ${showMaterials || inReview ? styles.withMaterials : ""}`}>
       <header className={styles.header}>
         <div className={styles.headerTopRow}>
           <Link to="/" className={styles.backIconLink} aria-label="Back to projects" title="Back to projects">
@@ -667,25 +794,71 @@ export function ProjectPage() {
       </header>
 
       <div className={styles.workspace}>
+        <aside className={styles.photos} aria-label="Your photos">
+          <h2 className={styles.columnHeading}>Photos</h2>
+          <div className={styles.photoList}>
+            {uploadedImages.map((ref) => {
+              const isOriginal = ref.index === conceptReferenceIndex;
+              const isAdded = originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current;
+              return (
+                <ProjectImageTile
+                  key={`reference-${ref.index}`}
+                  status="loaded"
+                  src={imageUrl(ref.thumbnailUrl)}
+                  label={`Photo ${ref.index + 1}`}
+                  badge={isOriginal ? "Original" : isAdded ? "Added" : undefined}
+                  badgeAccent={isOriginal}
+                  isChecked={selectedReferenceIndices.has(ref.index)}
+                  onToggleCheck={inReview ? undefined : () => toggleReferenceSelection(ref.index)}
+                  onClick={() => openLightbox(`reference-${ref.index}`)}
+                />
+              );
+            })}
+            {!inReview && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  hidden
+                  onChange={handleFilesSelected}
+                />
+                <button
+                  type="button"
+                  className={styles.addPhoto}
+                  onClick={handleAddPhotoClick}
+                  disabled={isUploadingImage || isDeleting}
+                  title="Add photos - each is rendered right away with your current settings"
+                >
+                  {isUploadingImage ? <Spinner /> : "+ Add photo"}
+                </button>
+              </>
+            )}
+          </div>
+          {!inReview && <p className={styles.columnHint}>New photos are rendered right away. Select photos to render them again.</p>}
+          {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
+        </aside>
+
         <main className={styles.main}>
           {inReview ? (
-            <section className={styles.stage} aria-label="Concept image">
-              {reviewImage ? (
+            <section className={styles.stage} aria-label="Your photo">
+              {reviewSrc ? (
                 <div className={styles.stageImage}>
                   <MaterialOverlay
-                    src={imageUrl(reviewImage.url)}
-                    alt="Concept image"
-                    materials={concept?.materials ?? []}
+                    src={reviewSrc}
+                    alt={conceptSource?.alt ?? "Concept image"}
+                    materials={materials}
                     activeId={activeMaterialId}
                     selectedId={selectedMaterialId}
                     onHover={setHoveredMaterialId}
                     onSelect={setSelectedMaterialId}
                     dotStyle={dotStyle}
                   />
-                  {isLabelling && (
+                  {reviewStatus && (
                     <div className={styles.stageBusy}>
                       <Spinner />
-                      <span>Tracing the materials...</span>
+                      <span>{reviewStatus}</span>
                     </div>
                   )}
                 </div>
@@ -703,25 +876,12 @@ export function ProjectPage() {
                 </div>
               )}
               <p className={styles.stageHint}>
-                One image first, to agree the materials. Hover or click a material to see where it goes - your{" "}
-                {project.imageCountPerBatch === 1 ? "image is" : `${project.imageCountPerBatch} images are`} generated after you approve.
+                Nothing is rendered yet. Agree the materials on your photo first - hover or click one to see where it goes. You choose
+                how many images to generate after you approve.
               </p>
             </section>
-          ) : (
+          ) : hasRenders ? (
             <div className={styles.grid}>
-              {uploadedImages.map((ref) => (
-                <ProjectImageTile
-                  key={`reference-${ref.index}`}
-                  status="loaded"
-                  src={imageUrl(ref.thumbnailUrl)}
-                  label={`Reference photo ${ref.index + 1}`}
-                  isChecked={selectedReferenceIndices.has(ref.index)}
-                  onToggleCheck={() => toggleReferenceSelection(ref.index)}
-                  isNewlyAdded={originalReferenceCount.current !== null && ref.index >= originalReferenceCount.current}
-                  onClick={() => openLightbox(`reference-${ref.index}`)}
-                />
-              ))}
-
               {Array.from({ length: project.requestedImageCount }, (_, index) => {
                 const image = images.find((img) => img.index === index);
                 if (image) {
@@ -730,12 +890,11 @@ export function ProjectPage() {
                       key={`generated-${index}`}
                       status="loaded"
                       src={imageUrl(image.thumbnailUrl)}
-                      label={`Generated image ${index + 1}`}
+                      label={generatedLabel(image)}
+                      badge={typeof image.sourceReferenceIndex === "number" ? `Photo ${image.sourceReferenceIndex + 1}` : undefined}
                       isChecked={selectedGeneratedIds.has(image.imageId)}
                       onToggleCheck={() => toggleGeneratedSelection(image.imageId)}
                       isRefining={refiningImageIds.has(image.imageId)}
-                      isConcept={showMaterials && image.imageId === concept?.conceptImageId}
-                      onSetConcept={showMaterials ? () => void handleSetConcept(image.imageId) : undefined}
                       onClick={() => openLightbox(image.imageId)}
                     />
                   );
@@ -753,9 +912,22 @@ export function ProjectPage() {
                 return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
               })}
 
-              {Array.from({ length: pendingNewImageCount }, (_, i) => (
-                <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
+              {Array.from({ length: placeholderCount }, (_, i) => (
+                <ProjectImageTile
+                  key={`pending-new-${i}`}
+                  status="loading"
+                  label={i < pendingNewImageCount ? "Generating new image..." : "Waiting its turn..."}
+                />
               ))}
+            </div>
+          ) : (
+            <div className={styles.emptyRenders}>
+              <p>No renders yet.</p>
+              {originalPhoto && (
+                <button type="button" className={styles.sendButton} onClick={() => setIsGenerateOpen(true)}>
+                  Generate from your photo
+                </button>
+              )}
             </div>
           )}
 
@@ -766,21 +938,9 @@ export function ProjectPage() {
                   ? selectedReferenceIndices.size > 0
                     ? `Generating ${editImageCount} new image(s) from the selected photo(s) · Press Delete to remove`
                     : `Editing ${selectedGeneratedIds.size} selected image(s) · Press Delete to remove`
-                  : `Generating ${editImageCount} new image(s) from your prompt and settings · Select images to edit them instead`}
+                  : `Generating ${editImageCount} new image(s) from your prompt and settings · Select renders to edit them, or photos to render them`}
               </div>
               <div className={styles.refineInputRow}>
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFileSelected} />
-                <button
-                  type="button"
-                  className={styles.attachButton}
-                  onClick={handleAttachClick}
-                  disabled={isUploadingImage || isEditing || isDeleting}
-                  aria-label="Add another photo to this project"
-                  title="Add another photo to this project"
-                >
-                  {isUploadingImage ? <Spinner /> : <AttachIcon />}
-                </button>
-
                 <input
                   type="text"
                   value={instruction}
@@ -793,11 +953,11 @@ export function ProjectPage() {
                         : "Describe the edit to the selected images..."
                   }
                   maxLength={MAX_INSTRUCTION_LENGTH}
-                  disabled={isEditing || isDeleting}
+                  disabled={isBusy || isDeleting}
                   className={styles.refineInput}
                 />
 
-                <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isEditing || isDeleting}>
+                <Dropdown trigger={<HamburgerIcon />} align="right" disabled={isBusy || isDeleting}>
                   <label className={styles.settingField}>
                     <span>Time of day</span>
                     <select value={editTimeOfDay} onChange={(e) => setEditTimeOfDay(e.target.value as TimeOfDay)}>
@@ -851,7 +1011,7 @@ export function ProjectPage() {
                     </span>
                   }
                   align="right"
-                  disabled={isEditing || isDeleting}
+                  disabled={isBusy || isDeleting}
                 >
                   <ModelPicker
                     models={catalog.models}
@@ -859,53 +1019,51 @@ export function ProjectPage() {
                     onSelectKey={handleSelectModel}
                     selectedImageSize={editImageSize}
                     onSelectImageSize={setEditImageSize}
-                    disabled={isEditing || isDeleting}
+                    disabled={isBusy || isDeleting}
                   />
                 </Dropdown>
 
-                <button type="submit" className={styles.sendButton} disabled={!canSubmit || isEditing || isDeleting}>
-                  {isEditing ? <Spinner /> : willUseGpt ? "Generate" : "Send"}
+                <button type="submit" className={styles.sendButton} disabled={!canSubmit || isBusy || isDeleting}>
+                  {isBusy ? <Spinner /> : willUseGpt ? "Generate" : "Send"}
                 </button>
               </div>
-              {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
               {editError && <ErrorBanner error={editError} onDismiss={() => setEditError(null)} />}
               {deleteError && <ErrorBanner error={deleteError} onDismiss={() => setDeleteError(null)} />}
             </form>
           )}
         </main>
 
-        {showMaterials && concept && (
+        {showMaterials && concept ? (
           <div className={styles.side}>
             <MaterialsPanel
               concept={concept}
-              conceptImageSrc={!inReview && conceptImage ? imageUrl(conceptImage.thumbnailUrl) : null}
-              hasGeneratedImages={images.length > 0}
+              conceptImageSrc={!inReview && conceptSource ? conceptSource.src : null}
+              conceptImageAlt={conceptSource?.alt ?? "Concept image"}
               isLabelling={isLabelling}
               hoveredId={hoveredMaterialId}
               selectedId={selectedMaterialId}
               onHover={setHoveredMaterialId}
               onSelect={setSelectedMaterialId}
               onRename={handleRenameMaterial}
+              onAdd={handleAddMaterial}
+              onDelete={handleDeleteMaterial}
               dotStyle={dotStyle}
               onDotStyleChange={changeDotStyle}
               onEditAreas={
-                concept.conceptLabelled && conceptImage && !isLabelling
+                concept.conceptLabelled && conceptSource && !isLabelling
                   ? () => {
                       setHoveredMaterialId(null);
-                      setIsAreaEditorOpen(true);
+                      setAreaEditor({ materialId: selectedMaterialId, drawing: false });
                     }
                   : undefined
               }
-              onOpenConceptImage={conceptImage ? () => openLightbox(conceptImage.imageId) : undefined}
+              onOpenConceptImage={conceptSource ? () => openLightbox(conceptSource.lightboxId) : undefined}
               review={
                 inReview
                   ? {
-                      canApprove: reviewImage != null && !isLabelling && generatingIndices.size === 0,
+                      canApprove: Boolean(project.generatedPrompt) && reviewSrc !== null && !isLabelling && generatingIndices.size === 0,
                       isBusy: isApproving || isRetryingConcept,
-                      onApprove: () => {
-                        setApproveError(null);
-                        setIsApproveOpen(true);
-                      },
+                      onApprove: () => void handleApprove(),
                       onRetry: () => void handleRetryConcept(),
                     }
                   : undefined
@@ -913,34 +1071,48 @@ export function ProjectPage() {
             />
             {conceptError && <ErrorBanner error={conceptError} onDismiss={() => setConceptError(null)} />}
           </div>
+        ) : (
+          inReview && (
+            <div className={styles.side}>
+              <div className={styles.sidePlaceholder}>
+                <Spinner />
+                <span>Choosing the main materials...</span>
+              </div>
+            </div>
+          )
         )}
       </div>
 
-      {isAreaEditorOpen && concept && conceptImage && (
+      {areaEditor && concept && conceptSource && (
         <MaterialAreaEditor
-          imageSrc={imageUrl(conceptImage.url)}
+          imageSrc={conceptSource.src}
+          imageAlt={conceptSource.alt}
           materials={concept.materials}
           dotStyle={dotStyle}
-          initialMaterialId={selectedMaterialId}
+          initialMaterialId={areaEditor.materialId}
+          initialDrawing={areaEditor.drawing}
           onSave={handleSaveAreas}
-          onClose={() => setIsAreaEditorOpen(false)}
+          onClose={() => setAreaEditor(null)}
         />
       )}
 
-      {isApproveOpen && (
-        <ApproveConceptDialog
+      {isGenerateOpen && originalPhoto && (
+        <GenerateFromPhotoDialog
+          photoSrc={imageUrl(originalPhoto.thumbnailUrl)}
           models={catalog.models}
           maxImages={catalog.maxGeneratedImages}
+          aspectRatios={catalog.supportedAspectRatios}
           initial={{
-            imageCount: Math.min(project.imageCountPerBatch || 1, catalog.maxGeneratedImages),
-            modelKey: project.model.key,
-            imageSize: project.imageSize,
+            imageCount: editImageCount,
+            modelKey: editModelKey,
+            imageSize: editImageSize,
+            aspectRatio: editAspectRatio,
+            timeOfDay: editTimeOfDay,
+            weather: editWeather,
+            location: editLocation,
           }}
-          scene={{ aspectRatio: project.aspectRatio, timeOfDay: project.timeOfDay, weather: project.weather, location: project.location }}
-          isSubmitting={isApproving}
-          error={approveError}
-          onConfirm={(settings) => void handleApproveConcept(settings)}
-          onCancel={() => setIsApproveOpen(false)}
+          onConfirm={handleGenerateFromPhoto}
+          onCancel={() => setIsGenerateOpen(false)}
         />
       )}
 
@@ -954,4 +1126,10 @@ export function ProjectPage() {
       )}
     </div>
   );
+}
+
+function generatedLabel(image: GeneratedImageDto): string {
+  return typeof image.sourceReferenceIndex === "number"
+    ? `Generated image ${image.index + 1} · from photo ${image.sourceReferenceIndex + 1}`
+    : `Generated image ${image.index + 1}`;
 }

@@ -12,11 +12,14 @@ const MAX_UNDO = 50;
 const SAVE_DELAY_MS = 500;
 
 interface MaterialAreaEditorProps {
-  /** Full-size signed URL of the concept image, already absolute. */
+  /** Full-size signed URL of the image the materials are mapped on, already absolute. */
   imageSrc: string;
+  imageAlt: string;
   materials: ProjectMaterialDto[];
   dotStyle: DotStyle;
   initialMaterialId?: string | null;
+  /** Opens with "Add area" already on - for a material just added, which has no area yet. */
+  initialDrawing?: boolean;
   /** Persists one material's complete set of areas; rejects to show the save as failed. */
   onSave: (materialId: string, polygons: Point[][]) => Promise<void>;
   onClose: () => void;
@@ -48,12 +51,22 @@ function initialAreas(materials: ProjectMaterialDto[]): Areas {
 }
 
 /**
- * Full-size editor for the concept image's material areas. Everything happens locally and
- * instantly - the dots redraw while dragging - and each finished change is saved in the
- * background, debounced per material. No AI is involved: the areas are just the polygons
- * labelling traced, now in the user's hands. Overlay only; generation doesn't read them.
+ * Full-size editor for the material areas on the concept image (the original photo).
+ * Everything happens locally and instantly - the dots redraw while dragging - and each
+ * finished change is saved in the background, debounced per material. No AI is involved
+ * here: the areas are the polygons labelling traced, now in the user's hands. Later renders
+ * place each material from them (the API draws them into the material map GPT reads).
  */
-export function MaterialAreaEditor({ imageSrc, materials, dotStyle, initialMaterialId, onSave, onClose }: MaterialAreaEditorProps) {
+export function MaterialAreaEditor({
+  imageSrc,
+  imageAlt,
+  materials,
+  dotStyle,
+  initialMaterialId,
+  initialDrawing,
+  onSave,
+  onClose,
+}: MaterialAreaEditorProps) {
   const [areas, setAreas] = useState<Areas>(() => initialAreas(materials));
   // Undo history in a ref, not state: pushing and popping happen inside event handlers, and
   // doing them in state updaters would run twice under StrictMode (one Ctrl+Z, two steps).
@@ -62,7 +75,7 @@ export function MaterialAreaEditor({ imageSrc, materials, dotStyle, initialMater
   const [materialId, setMaterialId] = useState<string>(initialMaterialId ?? materials[0]?.id ?? "");
   const [polygonIndex, setPolygonIndex] = useState<number | null>(null);
   const [vertexIndex, setVertexIndex] = useState<number | null>(null);
-  const [drawing, setDrawing] = useState<Point[] | null>(null);
+  const [drawing, setDrawing] = useState<Point[] | null>(initialDrawing ? [] : null);
   const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
 
   const layerRef = useRef<SVGSVGElement>(null);
@@ -296,7 +309,7 @@ export function MaterialAreaEditor({ imageSrc, materials, dotStyle, initialMater
       <div className={styles.editor} role="dialog" aria-modal="true" aria-label="Edit material areas">
         <div className={styles.canvas}>
           <div className={styles.imageWrap}>
-            <MaterialOverlay src={imageSrc} alt="Concept image" materials={liveMaterials} activeId={materialId} dotStyle={dotStyle} />
+            <MaterialOverlay src={imageSrc} alt={imageAlt} materials={liveMaterials} activeId={materialId} dotStyle={dotStyle} />
             <svg
               ref={layerRef}
               className={`${styles.layer} ${drawing ? styles.drawing : ""}`}
@@ -452,7 +465,7 @@ export function MaterialAreaEditor({ imageSrc, materials, dotStyle, initialMater
             <li>Double-click an edge to add a point.</li>
             <li>Select a point or an area and press Delete.</li>
             <li>Add area: click around the shape, then click the first point or press Enter.</li>
-            <li>Ctrl+Z undoes. Areas change the overlay only.</li>
+            <li>Ctrl+Z undoes. Renders from now on place each material where its areas are.</li>
           </ul>
 
           <div className={styles.footer}>

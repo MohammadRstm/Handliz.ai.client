@@ -1,6 +1,5 @@
 import { apiDeleteJson, apiGet, apiPatchJson, apiPostForm, apiPostJson, apiPutJson } from "./client";
 import type {
-  ApproveConceptResponse,
   ProjectDetailResponse,
   ProjectListResponse,
   DeleteProjectImagesResponse,
@@ -162,39 +161,45 @@ export function renameMaterials(
   return apiPatchJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials`, { materials }, { accessToken, signal });
 }
 
-/** Shows the material concept on a different generated image. Call labelConceptImage afterwards if it comes back unlabelled. */
-export function setConceptImage(projectId: string, imageId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
-  return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/images/${imageId}/set-concept`, {}, { accessToken, signal });
+/**
+ * Adds a material the user names (409 MATERIAL_LIMIT_REACHED at MAX_MATERIALS). It has no
+ * area until one is drawn with updateMaterialAreas.
+ */
+export function addMaterial(projectId: string, name: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
+  return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials`, { name }, { accessToken, signal });
+}
+
+/** Deletes a material and its areas. Images already generated keep it. */
+export function deleteMaterial(projectId: string, materialId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
+  return apiDeleteJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials/${materialId}`, {}, { accessToken, signal });
 }
 
 /**
- * Locates the materials on the concept image (one Gemini Flash call, ~10 s, no credits).
- * Idempotent and a no-op while there is no concept image yet, so it is safe to call
- * whenever the concept looks unlabelled.
+ * Maps the materials on the concept image - the original photo (one Gemini Flash call,
+ * ~10 s, no credits). Idempotent and a no-op while there is nothing to map, so it is safe
+ * to call whenever the concept looks unlabelled.
  */
 export function labelConceptImage(projectId: string, accessToken: string, signal?: AbortSignal): Promise<ProjectMaterialsResponse> {
   return apiPostJson<ProjectMaterialsResponse>(`${BASE_PATH}/${projectId}/materials/label`, {}, { accessToken, signal });
 }
 
-/** Approves the material concept and opens the batch, with the settings confirmed in the approval step. */
-export function approveConcept(
-  projectId: string,
-  settings: { imageCount: number; modelKey: string; imageSize: string },
-  accessToken: string,
-  signal?: AbortSignal,
-): Promise<ApproveConceptResponse> {
-  return apiPostJson<ApproveConceptResponse>(`${BASE_PATH}/${projectId}/concept/approve`, settings, { accessToken, signal });
+/**
+ * Approves the materials and their areas for every render in the project. Generates nothing:
+ * rendering the original photo afterwards is an ordinary editImages call selecting it.
+ */
+export function approveConcept(projectId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
+  return apiPostJson<SuccessResponse>(`${BASE_PATH}/${projectId}/concept/approve`, {}, { accessToken, signal });
 }
 
-/** Discards an unapproved concept (its image, materials and prompt) so it can be generated again. */
+/** Discards an unapproved concept (its materials and prompt) so the photo is read again. */
 export function retryConcept(projectId: string, accessToken: string, signal?: AbortSignal): Promise<SuccessResponse> {
   return apiPostJson<SuccessResponse>(`${BASE_PATH}/${projectId}/concept/retry`, {}, { accessToken, signal });
 }
 
 /**
  * Replaces one material's areas on the concept image with the user's edit - polygons of
- * [y, x] points, 0-1000. An empty list marks it as not in view. Overlay only: generation
- * doesn't read these shapes.
+ * [y, x] points, 0-1000. An empty list marks it as not in view. Later renders place the
+ * materials from these areas (through the material map GPT reads).
  */
 export function updateMaterialAreas(
   projectId: string,
