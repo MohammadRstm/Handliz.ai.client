@@ -19,6 +19,12 @@ interface MaterialOverlayProps {
   onSelect?: (materialId: string | null) => void;
   /** "even": a regular grid. "random": the same density, each dot placed at random within its grid cell. */
   dotStyle?: DotStyle;
+  /**
+   * Caps the image's height (any CSS length), shrinking its width to match and centring it -
+   * for a photo shown large, which must fit the screen rather than run past its bottom.
+   * Without it the image fills the width at its natural aspect ratio.
+   */
+  maxHeight?: string;
 }
 
 export type DotStyle = "even" | "random";
@@ -155,6 +161,7 @@ export function MaterialOverlay({
   onHover,
   onSelect,
   dotStyle = "even",
+  maxHeight,
 }: MaterialOverlayProps) {
   const uid = useId().replace(/:/g, "");
   const imgRef = useRef<HTMLImageElement>(null);
@@ -189,8 +196,15 @@ export function MaterialOverlay({
   );
 
   return (
-    <div className={styles.wrap} onMouseLeave={() => onHover?.(null)}>
-      <img ref={imgRef} src={src} alt={alt} className={styles.image} onClick={() => onSelect?.(null)} />
+    <div className={`${styles.wrap} ${maxHeight ? styles.fitted : ""}`} onMouseLeave={() => onHover?.(null)}>
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        className={styles.image}
+        style={maxHeight ? { maxHeight } : undefined}
+        onClick={() => onSelect?.(null)}
+      />
       {size && !hidden && shapes.length > 0 && (
         <>
           <svg className={styles.svg} viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
