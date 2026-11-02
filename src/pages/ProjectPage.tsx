@@ -28,6 +28,7 @@ import { MaterialOverlay, type DotStyle } from "../components/MaterialOverlay";
 import { MaterialsPanel } from "../components/MaterialsPanel";
 import { ModelPicker } from "../components/ModelPicker";
 import { Spinner } from "../components/Spinner";
+import { AS_IMAGE, measureImage, nearestAspectRatio, resolveAspectRatio } from "../aspectRatio";
 import { MAX_INSTRUCTION_LENGTH, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import { UsageRing } from "../usage/UsageRing";
 import { useUsage } from "../usage/useUsage";
@@ -104,13 +105,6 @@ export function ProjectPage() {
   const [refiningImageIds, setRefiningImageIds] = useState<Set<string>>(new Set());
   const [pendingNewImageCount, setPendingNewImageCount] = useState(0);
 
-  // Renders waiting their turn - one per photo uploaded while another render runs. Edits
-  // run one at a time: the API numbers new images as it appends them, and two batches
-  // appending at once could be given the same numbers.
-  const renderQueue = useRef<EditImagesParams[]>([]);
-  const isDraining = useRef(false);
-  const [queuedImageCount, setQueuedImageCount] = useState(0);
-
   // In-project editable generation parameters (Chunk 9) - seeded from the project's current
   // values once it loads, then editable via the settings dropdown. Sent with every edit
   // request; the backend both applies them to that request and persists them as the
@@ -118,7 +112,17 @@ export function ProjectPage() {
   const [editTimeOfDay, setEditTimeOfDay] = useState<TimeOfDay>("GoldenHour");
   const [editWeather, setEditWeather] = useState<WeatherCondition>("Clear");
   const [editLocation, setEditLocation] = useState("");
+  // A ratio, or AS_IMAGE - resolved against the photo being rendered when a request is sent.
   const [editAspectRatio, setEditAspectRatio] = useState("");
+  // Set once the user picks a ratio, so the load-time switch to "As image" never overrides them.
+  const ratioChosen = useRef(false);
+  const chooseAspectRatio = (ratio: string) => {
+    ratioChosen.current = true;
+    setEditAspectRatio(ratio);
+  };
+  // Each photo's nearest supported ratio, measured from its thumbnail (which keeps its proportions).
+  const [photoRatios, setPhotoRatios] = useState<Record<number, string>>({});
+  const instructionRef = useRef<HTMLInputElement>(null);
   const [editImageCount, setEditImageCount] = useState(1);
   const [editModelKey, setEditModelKey] = useState("");
   const [editImageSize, setEditImageSize] = useState("");
@@ -352,6 +356,27 @@ export function ProjectPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, accessToken]);
+
+  useEffect(() => {
+    if (!catalog) return;
+    let cancelled = false;
+    for (const ref of uploadedImages) {
+      if (photoRatios[ref.index]) continue;
+      measureImage(imageUrl(ref.thumbnailUrl))
+        .then(({ width, height }) => {
+          const ratio = nearestAspectRatio(width, height, catalog.supportedAspectRatios);
+          if (!cancelled && ratio) setPhotoRatios((prev) => ({ ...prev, [ref.index]: ratio }));
+        })
+        .catch(() => {
+          // Unmeasured: "As image" falls back to the project's stored ratio.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // photoRatios is read only to skip photos already measured.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadedImages, catalog]);
 
   const lightboxItems: LightboxItem[] = useMemo(() => {
     const generatedItems: LightboxItem[] = images
@@ -594,17 +619,33 @@ export function ProjectPage() {
     }
   };
 
+  const originalPhoto =
+    (conceptReferenceIndex !== null ? uploadedImages.find((ref) => ref.index === conceptReferenceIndex) : undefined) ?? uploadedImages[0];
+  // "As image" follows the photo being rendered: the first one selected, else the original -
+  // with nothing selected the API renders from the photos of the current prompt.
+  const ratioPhotoIndex = selectedReferenceIndices.size > 0 ? Array.from(selectedReferenceIndices)[0] : originalPhoto?.index;
+  const imageRatio = ratioPhotoIndex !== undefined ? (photoRatios[ratioPhotoIndex] ?? null) : null;
+  const resolvedAspectRatio = resolveAspectRatio(editAspectRatio, imageRatio, project?.aspectRatio ?? "16:9");
+
+  // A project whose ratio is already its original photo's opens with "As image" chosen - how
+  // the home page creates projects by default - unless the user has picked one since.
+  const originalRatio = originalPhoto ? photoRatios[originalPhoto.index] : undefined;
+  useEffect(() => {
+    if (ratioChosen.current || !project || !originalRatio) return;
+    if (editAspectRatio === project.aspectRatio && originalRatio === project.aspectRatio) setEditAspectRatio(AS_IMAGE);
+  }, [originalRatio, project, editAspectRatio]);
+
   const currentSettings = (): Omit<EditImagesParams, "instruction" | "selectedGeneratedImageIds" | "selectedReferenceIndices"> => ({
     timeOfDay: editTimeOfDay,
     weather: editWeather,
     location: editLocation,
-    aspectRatio: editAspectRatio,
+    aspectRatio: resolvedAspectRatio,
     imageCount: editImageCount,
     modelKey: editModelKey,
     imageSize: editImageSize,
   });
 
-  /** Runs one edit request; resolves true when it succeeded. Callers make sure only one runs at a time. */
+  /** Runs one edit request; resolves true when it succeeded. Only one runs at a time (isEditing blocks the rest). */
   const runEdit = async (params: EditImagesParams): Promise<boolean> => {
     if (!projectId || !accessToken) return false;
     // Mirrors the backend's branch decision: a selected photo, or nothing selected, adds new images.
@@ -655,42 +696,31 @@ export function ProjectPage() {
     }
   };
 
-  const queueRender = (params: EditImagesParams) => {
-    renderQueue.current.push(params);
-    setQueuedImageCount((count) => count + params.imageCount);
-    if (isDraining.current) return;
-    isDraining.current = true;
-    void (async () => {
-      while (renderQueue.current.length > 0) {
-        const next = renderQueue.current.shift()!;
-        setQueuedImageCount((count) => count - next.imageCount);
-        await runEdit(next);
-      }
-      isDraining.current = false;
-    })();
-  };
-
-  const originalPhoto =
-    (conceptReferenceIndex !== null ? uploadedImages.find((ref) => ref.index === conceptReferenceIndex) : undefined) ?? uploadedImages[0];
-
   const handleGenerateFromPhoto = (settings: GenerateSettings) => {
     setIsGenerateOpen(false);
-    if (!originalPhoto) return;
+    if (!originalPhoto || isEditing) return;
     // The bar keeps whatever was chosen here, as the project's settings from now on.
     setEditTimeOfDay(settings.timeOfDay);
     setEditWeather(settings.weather);
     setEditLocation(settings.location);
-    setEditAspectRatio(settings.aspectRatio);
+    chooseAspectRatio(settings.aspectRatio);
     setEditImageCount(settings.imageCount);
     setEditModelKey(settings.modelKey);
     setEditImageSize(settings.imageSize);
-    queueRender({ instruction: "", selectedGeneratedImageIds: [], selectedReferenceIndices: [originalPhoto.index], ...settings });
+    void runEdit({
+      instruction: "",
+      selectedGeneratedImageIds: [],
+      selectedReferenceIndices: [originalPhoto.index],
+      ...settings,
+      aspectRatio: resolveAspectRatio(settings.aspectRatio, photoRatios[originalPhoto.index], project?.aspectRatio ?? "16:9"),
+    });
   };
 
   const handleAddPhotoClick = () => fileInputRef.current?.click();
 
-  // Every photo added after approval is rendered right away with the current settings -
-  // each on its own, so several picked at once get one render each, in turn.
+  // Added photos are selected and wait for Generate, so the user can describe what they want
+  // and adjust the settings first - rendering them on upload spent credits on settings the
+  // user hadn't chosen yet. "As image" is pre-selected: renders keep the new photo's shape.
   const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = ""; // allow re-selecting the same file later
@@ -698,16 +728,23 @@ export function ProjectPage() {
 
     setIsUploadingImage(true);
     setUploadError(null);
+    const added: number[] = [];
     try {
       for (const file of files) {
         const response = await projectsApi.uploadReferenceImage(projectId, file, accessToken);
         setUploadedImages((prev) => [...prev, response.referenceImage]);
-        queueRender({ instruction: "", selectedGeneratedImageIds: [], selectedReferenceIndices: [response.referenceImage.index], ...currentSettings() });
+        added.push(response.referenceImage.index);
       }
     } catch (err) {
       setUploadError(toError(err));
     } finally {
       setIsUploadingImage(false);
+      if (added.length > 0) {
+        setSelectedGeneratedIds(new Set());
+        setSelectedReferenceIndices(new Set(added));
+        chooseAspectRatio(AS_IMAGE);
+        instructionRef.current?.focus();
+      }
     }
   };
 
@@ -726,16 +763,16 @@ export function ProjectPage() {
     ? editTimeOfDay !== project.timeOfDay ||
       editWeather !== project.weather ||
       editLocation.trim() !== project.location ||
-      editAspectRatio !== project.aspectRatio ||
+      resolvedAspectRatio !== project.aspectRatio ||
       editModelKey !== project.model.key ||
       editImageSize !== project.imageSize
     : false;
-  const isBusy = isEditing || queuedImageCount > 0;
+  const isBusy = isEditing;
   const canSubmit = instruction.trim().length > 0 || willUseGpt || hasParamChanges;
 
   const handleEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canSubmit || isBusy || isDraining.current || isDeleting) return;
+    if (!canSubmit || isBusy || isDeleting) return;
 
     const succeeded = await runEdit({
       instruction: instruction.trim(),
@@ -807,8 +844,7 @@ export function ProjectPage() {
     : isLabelling
       ? "Mapping the materials on your photo..."
       : null;
-  const placeholderCount = pendingNewImageCount + queuedImageCount;
-  const hasRenders = project.requestedImageCount > 0 || placeholderCount > 0;
+  const hasRenders = project.requestedImageCount > 0 || pendingNewImageCount > 0;
 
   return (
     <div
@@ -901,7 +937,9 @@ export function ProjectPage() {
               </>
             )}
           </div>
-          {!inReview && <p className={styles.columnHint}>New photos are rendered right away. Select photos to render them again.</p>}
+          {!inReview && (
+            <p className={styles.columnHint}>Added photos are selected for you - press Generate to render them. Select any photo to render it again.</p>
+          )}
           {uploadError && <ErrorBanner error={uploadError} onDismiss={() => setUploadError(null)} />}
         </aside>
 
@@ -978,12 +1016,8 @@ export function ProjectPage() {
                 return <ProjectImageTile key={`generated-${index}`} status="loading" label={`Image ${index + 1}`} />;
               })}
 
-              {Array.from({ length: placeholderCount }, (_, i) => (
-                <ProjectImageTile
-                  key={`pending-new-${i}`}
-                  status="loading"
-                  label={i < pendingNewImageCount ? "Generating new image..." : "Waiting its turn..."}
-                />
+              {Array.from({ length: pendingNewImageCount }, (_, i) => (
+                <ProjectImageTile key={`pending-new-${i}`} status="loading" label="Generating new image..." />
               ))}
             </div>
           ) : (
@@ -1008,6 +1042,7 @@ export function ProjectPage() {
               </div>
               <div className={styles.refineInputRow}>
                 <input
+                  ref={instructionRef}
                   type="text"
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
@@ -1060,13 +1095,18 @@ export function ProjectPage() {
                   </label>
                   <div className={styles.settingField}>
                     <span>Aspect ratio</span>
-                    <AspectRatioPicker ratios={catalog.supportedAspectRatios} selected={editAspectRatio} onSelect={setEditAspectRatio} />
+                    <AspectRatioPicker
+                      ratios={catalog.supportedAspectRatios}
+                      selected={editAspectRatio}
+                      onSelect={chooseAspectRatio}
+                      imageRatio={imageRatio}
+                    />
                   </div>
                 </Dropdown>
 
-                <div className={styles.lockedDropdown} title="Current aspect ratio">
-                  <AspectRatioIcon ratio={editAspectRatio} />
-                  {editAspectRatio}
+                <div className={styles.lockedDropdown} title="Aspect ratio of the next images">
+                  <AspectRatioIcon ratio={resolvedAspectRatio} />
+                  {editAspectRatio === AS_IMAGE ? `As image · ${resolvedAspectRatio}` : resolvedAspectRatio}
                 </div>
 
                 <Dropdown
@@ -1168,6 +1208,7 @@ export function ProjectPage() {
           models={catalog.models}
           maxImages={catalog.maxGeneratedImages}
           aspectRatios={catalog.supportedAspectRatios}
+          imageRatio={photoRatios[originalPhoto.index] ?? null}
           initial={{
             imageCount: editImageCount,
             modelKey: editModelKey,

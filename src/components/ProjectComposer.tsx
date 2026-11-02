@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ImageModelsResponse, CreateProjectParams, TimeOfDay, WeatherCondition } from "../api/projectTypes";
+import { AS_IMAGE, measureFile, nearestAspectRatio, resolveAspectRatio } from "../aspectRatio";
 import { DEFAULT_LOCATION, TIME_OF_DAY_OPTIONS, WEATHER_OPTIONS } from "../constants";
 import { AspectRatioPicker } from "./AspectRatioPicker";
 import { Dropdown } from "./Dropdown";
@@ -26,9 +27,29 @@ export function ProjectComposer({ catalog, onSubmit, isSubmitting }: ProjectComp
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>("GoldenHour");
   const [weather, setWeather] = useState<WeatherCondition>("Clear");
   const [imageCount, setImageCount] = useState(2);
-  const [aspectRatio, setAspectRatio] = useState(
-    catalog.supportedAspectRatios.includes("16:9") ? "16:9" : catalog.supportedAspectRatios[0],
-  );
+  // "As image" by default: renders come back at the shape of the photo the user uploaded,
+  // the first one (the original), unless they pick a ratio.
+  const [aspectRatio, setAspectRatio] = useState(AS_IMAGE);
+  const fallbackRatio = catalog.supportedAspectRatios.includes("16:9") ? "16:9" : catalog.supportedAspectRatios[0];
+
+  // Measured per file, and only trusted for the file it was measured from.
+  const original = files[0];
+  const [measured, setMeasured] = useState<{ file: File; ratio: string | null } | null>(null);
+  const imageRatio = original && measured?.file === original ? measured.ratio : null;
+  useEffect(() => {
+    if (!original) return;
+    let cancelled = false;
+    measureFile(original)
+      .then(({ width, height }) => {
+        if (!cancelled) setMeasured({ file: original, ratio: nearestAspectRatio(width, height, catalog.supportedAspectRatios) });
+      })
+      .catch(() => {
+        if (!cancelled) setMeasured({ file: original, ratio: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [original, catalog.supportedAspectRatios]);
   const [modelKey, setModelKey] = useState(catalog.defaultModelKey);
 
   const selectedModel = catalog.models.find((m) => m.key === modelKey) ?? catalog.models[0];
@@ -65,7 +86,7 @@ export function ProjectComposer({ catalog, onSubmit, isSubmitting }: ProjectComp
       weather,
       location: trimmedLocation || DEFAULT_LOCATION,
       imageCount,
-      aspectRatio,
+      aspectRatio: resolveAspectRatio(aspectRatio, imageRatio, fallbackRatio),
       modelKey,
       imageSize,
     });
@@ -129,6 +150,7 @@ export function ProjectComposer({ catalog, onSubmit, isSubmitting }: ProjectComp
               selected={aspectRatio}
               onSelect={setAspectRatio}
               disabled={isSubmitting}
+              imageRatio={imageRatio}
             />
           </div>
         </Dropdown>

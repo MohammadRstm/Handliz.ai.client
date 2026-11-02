@@ -1,10 +1,17 @@
+import { AS_IMAGE } from "../aspectRatio";
 import styles from "./AspectRatioPicker.module.css";
 
 interface AspectRatioPickerProps {
   ratios: string[];
+  /** A ratio, or AS_IMAGE. */
   selected: string;
   onSelect: (ratio: string) => void;
   disabled?: boolean;
+  /**
+   * Offers "As image" first - the ratio of the photo being rendered - when present. The
+   * photo's matching ratio, once measured, is shown with it; null while unknown.
+   */
+  imageRatio?: string | null;
 }
 
 /** A small rectangle icon proportioned to the ratio itself, e.g. "16:9" draws a wide thin rectangle. */
@@ -33,9 +40,23 @@ export function AspectRatioIcon({ ratio }: { ratio: string }) {
   );
 }
 
-export function AspectRatioPicker({ ratios, selected, onSelect, disabled }: AspectRatioPickerProps) {
+export function AspectRatioPicker({ ratios, selected, onSelect, disabled, imageRatio }: AspectRatioPickerProps) {
   return (
     <div className={styles.grid} role="radiogroup" aria-label="Aspect ratio">
+      {imageRatio !== undefined && (
+        <button
+          type="button"
+          role="radio"
+          aria-checked={selected === AS_IMAGE}
+          className={`${styles.option} ${styles.asImage} ${selected === AS_IMAGE ? styles.optionSelected : ""}`}
+          onClick={() => onSelect(AS_IMAGE)}
+          disabled={disabled}
+          title="Render at the photo's own aspect ratio"
+        >
+          <AspectRatioIcon ratio={imageRatio ?? "4:3"} />
+          <span>As image{imageRatio ? ` (${imageRatio})` : ""}</span>
+        </button>
+      )}
       {ratios.map((ratio) => (
         <button
           key={ratio}
