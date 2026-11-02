@@ -309,7 +309,14 @@ export function MaterialAreaEditor({
       <div className={styles.editor} role="dialog" aria-modal="true" aria-label="Edit material areas">
         <div className={styles.canvas}>
           <div className={styles.imageWrap}>
-            <MaterialOverlay src={imageSrc} alt={imageAlt} materials={liveMaterials} activeId={materialId} dotStyle={dotStyle} />
+            <MaterialOverlay
+              src={imageSrc}
+              alt={imageAlt}
+              materials={liveMaterials}
+              activeId={materialId}
+              dotStyle={dotStyle}
+              maxHeight="var(--editor-image-max-height)"
+            />
             <svg
               ref={layerRef}
               className={`${styles.layer} ${drawing ? styles.drawing : ""}`}
